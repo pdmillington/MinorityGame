@@ -58,7 +58,7 @@ class Player:
             if strategy["actions"][index] == minority_action:
                 strategy["score"] += reward  # Reward for correct prediction
             else:
-                strategy["score"] -= reward  # Penalty for incorrect prediction
+                strategy["score"] -= 0  # Penalty for incorrect prediction
         #print(self.strategies)
 
     def update_points(self, minority_action, action, attendance, N):
@@ -74,7 +74,7 @@ class Player:
         if action == minority_action:
             self.points += reward
         else:
-            self.points -= reward
+            self.points -= 0
             
         self.points_per_round.append(self.points)
 
