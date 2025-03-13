@@ -100,7 +100,7 @@ class MinorityGame:
         actions = [player.choose_action(self.history, self.random_flag) for player in self.players]
         count_1 = sum(actions)
         attendance = count_1  # Attendance
-        minority_action = 1 if count_1 <= self.n / 2 else 0  # Calculate the minority action
+        minority_action = 1 if count_1 < self.n / 2 else 0  # Calculate the minority action
 
         self.attendance.append(attendance)
 
