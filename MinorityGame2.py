@@ -120,4 +120,4 @@ class MinorityGame:
         variance = np.var(self.attendance)
         return variance / self.n if self.n > 0 else 0
     
-MinorityGame(7, 3, 10, 2, True, False).run()
+
