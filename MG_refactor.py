@@ -49,12 +49,13 @@ class Player:
 
 
 class MinorityGame:
-    def __init__(self, n, min_m, max_m, rounds, s, random_flag, use_new_payoff):
+    def __init__(self, n, min_m, max_m, rounds, s, random_flag, use_new_payoff, random_history):
         self.n = n
         self.rounds = rounds
         self.s = s
         self.random_flag = random_flag
         self.use_new_payoff = use_new_payoff
+        self.random_history = random_history
 
         self.memory_assignments = self.assign_memory_groups(n, min_m, max_m)
         self.players = [
@@ -66,9 +67,12 @@ class MinorityGame:
         self.max_m = max_m
         self.history = ''.join(random.choice(['0', '1']) for _ in range(max_m))
         self.attendance = []
+        self.price = []
+        self.price.append(10)
 
     def assign_memory_groups(self, n, min_m, max_m):
         memory_levels = list(range(min_m, max_m + 1))
+
         group_count = len(memory_levels)
         base_size = n // group_count
         remainder = n % group_count
@@ -83,16 +87,18 @@ class MinorityGame:
 
     def play_round(self):
         actions = [p.choose_action(self.history, self.random_flag) for p in self.players]
-        count_1 = sum(actions)
-        attendance = count_1
-        minority_action = 1 if count_1 < self.n / 2 else 0
+        attendance = sum(actions)
+        minority_action = 1 if attendance < self.n / 2 else 0
         self.attendance.append(attendance)
 
         for player, action in zip(self.players, actions):
             player.update_points(minority_action, action, attendance, self.n)
             player.update_strategy_scores(self.history, minority_action, self.n, attendance)
-
-        self.history = (self.history + str(minority_action))[-self.max_m:]
+            
+        if self.random_history:
+            self.history = ''.join(random.choice(['0', '1']) for _ in range(self.max_m))
+        else:
+            self.history = (self.history + str(minority_action))[-self.max_m:]
 
     def run(self):
         for _ in range(self.rounds):
