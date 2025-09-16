@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import skew, kurtosis
+from scipy.stats import skew, kurtosis, pearsonr
 from datetime import datetime
 from core.game import Game
 from payoffs.mg import ScaledMGPayoff, BinaryMGPayoff
@@ -170,6 +170,29 @@ def plot_individual_success_heatmap(game, interval=1000, save_path="plots/indivi
     plt.savefig(save_path, dpi=300)
     plt.close()
 
+def plot_switch_vs_success(games, save_path):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.figure(figsize=(10, 6))
+    log_lines = []
+    for label, game in games.items():
+        switches = np.array([p.strategy_switches for p in game.players])
+        success = np.array([np.mean(p.wins_per_round) for p in game.players])
+        plt.scatter(switches, success, alpha=0.6, label=f"{label} Payoff")
+
+        if len(switches) > 1:
+            corr, _ = pearsonr(switches, success)
+            log_lines.append(f"{label} Payoff - Correlation between switches and success: {corr:.3f}")
+
+    plt.title("Strategy Switching vs. Success Rate")
+    plt.xlabel("Number of Strategy Switches")
+    plt.ylabel("Average Success Rate")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plot_path = os.path.join(save_path)
+    plt.savefig(plot_path, dpi=300)
+    plt.close()
+    return log_lines
 
 def print_attendance_statistics(games):
     lines = ["\nAttendance Series Summary:\n"]
@@ -187,7 +210,7 @@ def print_attendance_statistics(games):
     print("\n".join(lines))
     return lines
 
-def compare_scaled_vs_binary(m=9, s=2, N=501, rounds=20000, intervals=[500, 1000, 2000, 5000]):
+def compare_scaled_vs_binary(m=8, s=5, N=1001, rounds=40000, intervals=[500, 1000, 2000, 5000]):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_path = f"plots/compare/m{m}_s{s}_r{rounds}_{timestamp}"
 
@@ -196,6 +219,7 @@ def compare_scaled_vs_binary(m=9, s=2, N=501, rounds=20000, intervals=[500, 1000
     switches_path = f"{base_path}_switches.pdf"
     rewards_path = f"{base_path}_avg_rewards.pdf"
     success_path = f"{base_path}_success_evolution.pdf"
+    switch_vs_success_path = f"{base_path}_switch_vs_success.pdf"
 
     games = run_comparative_games(m, s, N, rounds)
     compare_attendance_series(games, save_path=series_path)
@@ -203,6 +227,7 @@ def compare_scaled_vs_binary(m=9, s=2, N=501, rounds=20000, intervals=[500, 1000
     compare_strategy_switching(games, save_path=switches_path)
     compare_average_rewards(games, save_path=rewards_path)
     compare_success_evolution(games, interval_lengths=intervals, save_path=success_path)
+    switch_success_logs=plot_switch_vs_success(games, save_path=switch_vs_success_path)
     
     heatmap_paths = {}
     for label, game in games.items():
@@ -226,7 +251,8 @@ def compare_scaled_vs_binary(m=9, s=2, N=501, rounds=20000, intervals=[500, 1000
         f"Saved Avg Rewards: {rewards_path}",
         f"Saved Success Evolution: {success_path}"
     ] + [f"Saved {label} Success Heatmap: {path}" for label, path in heatmap_paths.items()] + \
-        [f"Saved {label} Top/Bottom Agents Plot: {base_path}_{label.lower()}_topbottom_succes.pdf" for label in games]+ log_lines
+        [f"Saved {label} Top/Bottom Agents Plot: {base_path}_{label.lower()}_topbottom_succes.pdf" for label in games]+ \
+        log_lines + switch_success_logs
 
     log_simulation(metadata)
 
