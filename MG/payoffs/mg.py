@@ -31,41 +31,83 @@ class MGPayoff(PayoffScheme):
             hypothetical_action = player.strategies[i, index]
             hypothetical_reward = self.get_reward(hypothetical_action, total_action, N)
             player.scores[i] += hypothetical_reward
+            
+        #MG style win for current round t
+        minority_action = -1 if total_action > 0 else 1
+        player.wins_per_round.append(1 if a_i == minority_action else 0)
 
 class BinaryMGPayoff(MGPayoff):
+    uses_orders = False
+    expects_delta_price = False
     def get_reward(self, a_i, total_action, N=None):
         return -a_i * np.sign(total_action)
 
 class ScaledMGPayoff(MGPayoff):
+    uses_orders = False
+    expects_delta_price = False
     def get_reward(self, a_i, total_action, N=None):
         return -a_i * total_action
     
 class SmallMinorityPayoff(MGPayoff):
+    uses_orders = False
+    expects_delta_price = False
     def get_reward(self, a_i, total_action, N=None):
-        return -a_i * np.sign(total_action) * (N / 2 + abs(total_action))
+        return -a_i * np.sign(total_action) * (N/2 + abs(total_action))
     
 class AssymetricMinorityPayoff(MGPayoff):
+    uses_orders = False
+    expects_delta_price = False
     def get_reward(self, a_i, total_action, N=None):
         return max(-a_i * np.sign(total_action) * (N / 2 + abs(total_action)),0)
 
     
 class DollarGamePayoff(PayoffScheme):
-    def update(self, player, all_actions, total_action, history):
-        if len(player.actions) < 2:
-            return
-        a_i_prev = player.actions[-2]
-        reward = a_i_prev * total_action
-        player.dollar += reward
-        player.dollar_per_round.append(player.dollar)
-        
-        # Update strategy scores based on previous action (optional logic)
-        h = history[-player.memory:]
-        history_bits = ['1' if x == 1 else '0' for x in h]
-        index = int(''.join(history_bits), 2)
-        for i in range(player.num_strategies):
-            if player.strategies[i, index] == a_i_prev:
-                player.scores[i] += reward
+    uses_orders = True
+    expects_delta_price = True
+    def __init__(self, sign=+1, lambda_value=1.0):
+        # sign=+1 → trend-following r(t-1) = + a_i(t-1)*A(t)
+        # sign=-1 → minority-flavored r(t-1) = - a_i(t-1)*A(t)
+        self.sign = 1 if sign >= 0 else -1
+        self.lambda_value = float(lambda_value)
 
+    def _prev_index(self, history, m):
+        """
+        Build the index for t-1 using the m-bit window that was used to decide at t-1.
+        Assuming `history` at this call already contains the minority bit for t-1, but not for t.
+        Then the correct slice for t-1's lookup is history[-m-1 : -1].
+        """
+        if len(history) < m + 1:
+            return None
+        window = history[-m-1:-1]
+        idx = int(''.join('1' if bit == 1 else '0' for bit in window), 2)
+        return idx
+
+    def update(self, player, all_actions, total_action, history, delta_price=None):
+        # Need at least two chosen actions to pay t-1 with A(t)
+        if len(player.actions) < 2:
+            # keep alignment of per-round series
+            if hasattr(player, "dollar_per_round"):
+                player.dollar_per_round.append(0.0)
+            return
+
+        # Pay chosen action from previous round with current total_action A(t)
+        a_prev = player.actions[-2]
+        reward = self.sign * a_prev * total_action * self.lambda_value
+
+        player.dollar += reward
+        player.dollar_per_round.append(reward)
+        
+        sA = 1 if total_action > 0 else -1
+        win = 1 if (a_prev == self.sign * sA) else 0
+        
+        player.wins_per_round.append(win)
+        
+        # virtual update at t-1 using the exact index you stored at decision time
+        if hasattr(player, "index_history") and len(player.index_history) >= 2:
+            prev_idx = player.index_history[-2]
+            virt_actions = player.strategies[:, prev_idx]
+            player.scores += self.sign * virt_actions * (self.lambda_value * total_action)
+        
 
 
     
