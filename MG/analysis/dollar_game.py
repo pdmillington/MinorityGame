@@ -315,10 +315,10 @@ def run_dollar_game_grid (
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     # Adjust parameters
-    m_values = [7, 9]
-    s_values = [2, 3]
+    m_values = [7, 9, 12]
+    s_values = [2, 3, 4]
     N = 501
-    rounds = 10000
+    rounds = 50000
     sign = +1
     seed = 12345
     lambda_mode = "manual"
