@@ -16,7 +16,9 @@ class Game:
                  memory_list=None,
                  num_strategies=2, 
                  rounds=1000, 
-                 payoff_scheme=None,):
+                 payoff_scheme=None,
+                 price_init=100,
+                 lambda_value=None):
         """
         Either pass (num_players, memory) for homogeneous or 
         pass memory_list=[m1, m2, ....mN]for heterogeneous players
@@ -52,6 +54,10 @@ class Game:
         self.history = list(np.random.choice([-1, 1], size=self.memory))
         self.actions = []
         self.players = []
+        self.prices = []
+        self.price_init = price_init
+        self.prices.append(self.price_init)
+        self.lambda_value = lambda_value
         
         if memory_list is not None:
             # For each value of memory in memory_list, create num_players agents
@@ -75,53 +81,42 @@ class Game:
         
         desired = [p.choose_action(self.history) for p in self.players]
         
-        if uses_orders:
         # Interpret 'desired' as desired positions; compute orders = Δpos
-            orders = []
-            for p, d in zip(self.players, desired):
+        orders=[]
+        for p, d in zip(self.players, desired):
+            if uses_orders:
                 order = int(d - p.position)   # {-2,-1,0,1,2}
-                p.position += order
-                p.position_history.append(p.position)
-                p.order_history.append(order)
-                orders.append(order)
-                flow = sum(orders)                # order flow A_t
-                all_actions = orders              # pass to payoff as "actions" for consistency
-        else:
-            # Classic MG: actions ARE the signal, no position bookkeeping
-            flow = sum(desired)               # A_t
-            all_actions = desired
+            else:
+                order = d
+   
+            p.position += order
+            p.position_history.append(p.position)
+            p.order_history.append(order)
+            orders.append(order)
+        flow = sum(orders)          # order flow A_t
+        if flow == 0:
+            flow = np.random.choice([-1,+1]) 
+        all_actions = orders              # pass to payoff as "actions" for consistency
+            
             
         self.actions.append(flow)
-    
-        # 2) If price is needed, build it now (log-returns recommended)
-        delta_price = None
-        if expects_delta_price:
-            if not hasattr(self, "p0"):
-                self.p0 = 100.0
-            if not hasattr(self, "lambda_value"):
-                # default scale; you can set from __init__
-                self.lambda_value = 1.0 / (self.num_players * 50.0)
-            if not hasattr(self, "noise_std"):
-                self.noise_std = 0.0
-            if not hasattr(self, "prices"):
-                self.prices = [self.p0]
-                self.returns = []
-
-            eps_t = 0.0  # or np.random.normal(0, self.noise_std)
-            r_t = self.lambda_value * flow + eps_t
-            p_next = self.prices[-1] * np.exp(r_t)
-            delta_price = p_next - self.prices[-1]
-            self.returns.append(r_t)
-            self.prices.append(p_next)
+        self.returns = []
+        
+        eps_t = 0.0  # or np.random.normal(0, self.noise_std)
+        r_t =  flow / self.lambda_value + eps_t
+        p_next = self.prices[-1] * np.exp(r_t)
+        delta_price = p_next - self.prices[-1]
+        self.prices.append(p_next)
+        self.returns.append(r_t)
 
         # 3) Payoffs update (MG: immediate; Dollar: delayed)
         for p in self.players:
             # MG update: (player, all_actions, flow, history_slice)
             # Dollar update expects delta_price as kw; MG will ignore unknown kw
             if expects_delta_price:
-                self.payoff_scheme.update(p, all_actions, flow, self.history[-p.memory:], delta_price=delta_price)
+                self.payoff_scheme.update(p, all_actions, flow, self.history[-p.memory:], self.prices[-1], delta_price=delta_price)
             else:
-                self.payoff_scheme.update(p, all_actions, flow, self.history[-p.memory:])
+                self.payoff_scheme.update(p, all_actions, flow, self.history[-p.memory:], self.prices[-1])
 
 
         # 5) Update “public info” bit for the MG history. Define it on the same 'flow'

@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from core.game import Game
-from payoffs.mg import BinaryMGPayoff, ScaledMGPayoff
+from payoffs.mg import BinaryMGPayoff, ScaledMGPayoff, DollarGamePayoff
 from utils.logger import log_simulation
 from concurrent.futures import ProcessPoolExecutor
 
@@ -36,7 +36,7 @@ def simulate_single_game(args):
 
 def run_phase_diagram(
     payoff_class,
-    m_values=range(2, 15),
+    m_values=range(3, 17),
     num_players=301,
     num_strategies=2,
     rounds=20000,
@@ -89,4 +89,4 @@ def run_phase_diagram(
     log_simulation(metadata, log_path)
 
 if __name__ == "__main__":
-    run_phase_diagram(ScaledMGPayoff)
+    run_phase_diagram(DollarGamePayoff)

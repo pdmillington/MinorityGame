@@ -165,7 +165,31 @@ def plot_dollar_distribution(results, m_values, s_values, N, rounds, save_dir):
    
     plt.suptitle("WDistribution of terminal wealth")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["awealth", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["wealth", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    filename = "_".join(bits)+".pdf"
+    path = os.path.join(save_dir, filename)
+    plt.savefig(path, format="pdf", dpi=300)
+    plt.close()
+    return path
+
+def plot_success_rate_distribution(results, m_values, s_values, N, rounds, save_dir):
+    
+    fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12,9), sharex=True, sharey=True)
+    
+    for i, m in enumerate(m_values):
+        for j, s in enumerate(s_values):
+            ax = axes[i, j]
+            ax.hist(results[(m,s)]["success_rates"], bins=40, edgecolor="black", alpha=0.8)
+            ax.set_title(f"m={m}, s={s}", fontsize=10)
+            ax.grid(True, linestyle="--", alpha=0.6)
+            if i == len(m_values)-1:
+                ax.set_xlabel("Average success rate")
+            if j == 0:
+                ax.set_ylabel("Frequency")
+   
+    plt.suptitle("Distribution of avg success rates by agent")
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    bits = ["avg_success_rates", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
@@ -231,19 +255,31 @@ def plot_price_graph(results, m_values, s_values, N, rounds, lam, save_dir):
     return path
     
 
-def plot_autocorrelation(results, m_values, s_values, N, rounds, save_dir):
-   # TODO: update for m, s
-   ac1 = 1.0
-   plt.figure(figsize=(6, 6))
-   plt.scatter(results[:-1], results[1:], s=6, alpha=0.6)
-   plt.title(f"A(t) vs A(t+1); ρ₁ = {ac1:.3f}")
-   plt.xlabel("A(t)")
-   plt.ylabel("A(t+1)")
-   plt.grid(True, linestyle="--", alpha=0.6)
-   plt.tight_layout()
-   p_ac = os.path.join(save_dir, "A_lag1_scatter.pdf")
-   plt.savefig(p_ac, format="pdf", dpi=300)
+def plot_autocorrelation(results, m_values, s_values, N, rounds, lam, save_dir):
+   
+   fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12, 9), sharex=True, sharey=True) 
+   
+   for i, m in enumerate(m_values):
+       for j, s in enumerate(s_values):
+           p = build_price_series(np.array(results[(m, s)]["actions"]), lam)
+           ax=axes[i,j]
+           ac1 = float(np.corrcoef(p[:-1], p[1:])[0,1])
+           ax.scatter(p[:-1], p[1:], s=6, alpha=0.6)
+           ax.set_title(f"p(t) vs p(t+1); ρ₁ = {ac1:.3f}")
+           ax.grid(True, linestyle="--", alpha=0.6)
+           if i == len(m_values)-1:
+               ax.set_xlabel("p(t)")
+           if j == 0:
+               ax.set_ylabel("p(t+1)")
+       
+   plt.suptitle("Price Autocorrelation")
+   plt.tight_layout(rect=[0, 0, 1, 0.96])
+   bits = ["price_autocorrelation", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+   filename = "_".join(bits) + ".pdf"
+   path = os.path.join(save_dir, filename)
+   plt.savefig(path, format="pdf", dpi=300)
    plt.close()
+   return path
 
 
 # -----------------------------------------------------------------------------
@@ -272,7 +308,7 @@ def run_dollar_game_grid (
     # ---- Run game ----
     for m in m_values:
         for s in s_values:
-            game = Game(num_players=N, memory=m, num_strategies=s, rounds=rounds, payoff_scheme=payoff)
+            game = Game(num_players=N, memory=m, num_strategies=s, rounds=rounds, payoff_scheme=payoff, lambda_value=lambda_value)
             game.run()
             key = (m,s)
             results[key] = {
@@ -315,14 +351,14 @@ def run_dollar_game_grid (
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     # Adjust parameters
-    m_values = [7, 9, 12]
+    m_values = [4, 6, 8]
     s_values = [2, 3, 4]
     N = 501
-    rounds = 50000
+    rounds = 20000
     sign = +1
     seed = 12345
     lambda_mode = "manual"
-    lambda_value = 50 * N
+    lambda_value = 10 * N
     price_noise_std = 0.0
     
     
@@ -355,6 +391,9 @@ if __name__ == "__main__":
     p2 = plot_price_graph(out, m_values, s_values, N, rounds, lambda_value, save_dir)
     p3 = plot_dollar_distribution(out, m_values, s_values, N, rounds, save_dir)
     p4 = plot_success_rates(out, m_values, s_values, N, rounds, lambda_value, save_dir)
+    p5 = plot_success_rate_distribution(out, m_values, s_values, N, rounds, save_dir)
+    p6 = plot_autocorrelation(out, m_values, s_values, N, rounds, lambda_value, save_dir)
+
 
     """    
     # Register metrics

@@ -21,10 +21,12 @@ class Player:
         self.position = 0             # start flat; or +1/-1 if you prefer
         self.position_history = []
         self.order_history = []
-        self.dollar = 0
         self.cash = 0
+        self.cash_per_round = []
         self.strategy_switches = 0
         self.strategy = None
+        self.wealth = 0
+        self.wealth_per_round = []
 
     def choose_action(self, full_history):
         """
@@ -53,9 +55,9 @@ class Player:
         
         return action
 
-    
-
-    
 
     def update_score(self, strat_index, reward):
         self.scores[strat_index] += reward
+        
+
+        

@@ -13,13 +13,17 @@ class MGPayoff(PayoffScheme):
     def get_reward(self, a_i, total_action, N=None):
         raise NotImplementedError("Must implement get_reward in subclass.")
 
-    def update(self, player, all_actions, total_action, history):
+    def update(self, player, all_actions, total_action, history, price):
         if len(player.actions) == 0:
             return
         a_i = player.actions[-1]
         N=len(all_actions)
         reward = self.get_reward(a_i, total_action, N)
         player.points += reward
+        player.cash += -a_i * price
+        player.cash_per_round.append(-a_i * price)
+        player.wealth_per_round.append(player.position * price + player.cash)
+        player.wealth = player.wealth_per_round[-1]
 
         # Convert ±1 history to binary string index
         h = history[-player.memory:]
@@ -82,20 +86,28 @@ class DollarGamePayoff(PayoffScheme):
         idx = int(''.join('1' if bit == 1 else '0' for bit in window), 2)
         return idx
 
-    def update(self, player, all_actions, total_action, history, delta_price=None):
+    def update(self, player, all_actions, total_action, history, price, delta_price=None):
         # Need at least two chosen actions to pay t-1 with A(t)
         if len(player.actions) < 2:
             # keep alignment of per-round series
-            if hasattr(player, "dollar_per_round"):
-                player.dollar_per_round.append(0.0)
+            a_i = player.actions[-1]
+            player.cash_per_round.append(-a_i * price)
+            player.cash += -a_i * price
+            player.wealth_per_round.append(player.position * price + player.cash)
+            player.wealth = player.wealth_per_round[-1]
             return
 
         # Pay chosen action from previous round with current total_action A(t)
         a_prev = player.actions[-2]
-        reward = self.sign * a_prev * total_action * self.lambda_value
+        a_i = player.order_history[-1]
+        reward = self.sign * a_prev * total_action / self.lambda_value
 
-        player.dollar += reward
-        player.dollar_per_round.append(reward)
+        
+        player.points += reward
+        player.cash_per_round.append(-a_i * price)
+        player.cash += -a_i * price
+        player.wealth_per_round.append(player.position * price + player.cash)
+        player.wealth = player.wealth_per_round[-1]
         
         sA = 1 if total_action > 0 else -1
         win = 1 if (a_prev == self.sign * sA) else 0
