@@ -125,14 +125,20 @@ class Game:
         self.returns = []
         
         eps_t = 0.0  # or np.random.normal(0, self.noise_std)
-        total_flow = flow - self.mm.position
-        r_t =  flow / self.lambda_value - self.mm.position / (3 * self.lambda_value) + eps_t
+        
+        if self.mm:
+            pos_sum = self.mm.position
+        else:
+            pos_sum = 0
+        total_flow = flow - pos_sum
+        r_t =  flow / self.lambda_value - pos_sum / (3 * self.lambda_value) + eps_t
         p_next = self.prices[-1] * np.exp(r_t)
         delta_price = p_next - self.prices[-1]
         self.prices.append(p_next)
         self.returns.append(r_t)
-        self.mm.position -= flow
-        self.mm.position_by_round.append(-flow)
+        if self.mm:
+            self.mm.position -= flow
+            self.mm.position_by_round.append(-flow)
         
         
 
