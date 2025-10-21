@@ -9,13 +9,16 @@ Created on Thu Jul 24 18:19:23 2025
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import numpy as np
 import matplotlib.pyplot as plt
 from core.game import Game
-from payoffs.mg import BinaryMGPayoff,  ScaledMGPayoff
+from payoffs.mg import BinaryMGPayoff,  ScaledMGPayoff, DollarGamePayoff
 
 def plot_success_evolution(game, interval_lengths, save_path):
+    """
+    Takes output from game (usually lengthy) and plots moving averages of success
+    rates.
+    """
     avg_success_rates = []
     rounds = len(game.players[0].wins_per_round)
 
@@ -46,19 +49,19 @@ def plot_success_evolution(game, interval_lengths, save_path):
     plt.tight_layout()
     plt.savefig(save_path, format="pdf", dpi=300)
     plt.close()
-    
+
 if __name__ == "__main__":
-   
-    payoff = BinaryMGPayoff  # or ScaledMGPayoff
-    
+
+    payoff = DollarGamePayoff  # or ScaledMGPayoff
+
     # Success evolution demo run
     long_game = Game(
         num_players=501,
-        memory=9,
-        num_strategies=3,
+        memory=12,
+        num_strategies=5,
         rounds=20000,
         payoff_scheme=payoff()
     )
     long_game.run()
     intervals = [500, 1000, 2000, 5000]
-    plot_success_evolution(long_game, intervals, save_path="plots/success/success_evolution.pdf")    
+    plot_success_evolution(long_game, intervals, save_path="plots/success/success_evolution.pdf")
