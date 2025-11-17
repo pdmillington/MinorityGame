@@ -20,11 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.game import Game
 from core.player import Player
-from core.population_factory import PopulationFactory
-from core.players_factory import build_players
 from core.game_config import GameConfig
-from payoffs.mg import BinaryMGPayoff, ScaledMGPayoff, DollarGamePayoff
-from payoffs.mg import SmallMinorityPayoff, PAYOFF_REGISTRY
 from utils.logger import log_simulation
 
 @dataclass
@@ -84,17 +80,17 @@ def simulate_single_game(args):
         population_spec=population_spec,
         cfg=cfg_game,
         PlayerClass=Player
-        
+
     )
     results = game.run()
-    
+
     A_series = results["A_series"]
     prices = results["price_series"]
 
     prices_safe = np.where(prices <= 0, np.nan, prices)
     log_prices = np.log(prices_safe)
     returns = np.diff(log_prices)           # length rounds
-    
+
     sigma2 = np.nanvar(A_series)
     var_prices = np.nanvar(prices)
     mean_returns = np.nanmean(returns)
@@ -142,7 +138,7 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
     save_path = cfg.save_path.replace(".pdf", f"_{timestamp}.pdf")
     save_path2 = cfg.save_path2.replace(".pdf", f"_{timestamp}.pdf")
     save_path3 = cfg.save_path3.replace(".pdf", f"_{timestamp}.pdf")
-    
+
     label = cfg.payoff_key
 
     # Plotting
@@ -206,7 +202,7 @@ if __name__ == "__main__":
         num_players=301,
         num_strategies=2,
         position_limit=0,
-        rounds=5_000,
+        rounds=5_00,
         num_games=20,
         market_maker=None,
     )
