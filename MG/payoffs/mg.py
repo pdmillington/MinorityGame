@@ -124,4 +124,9 @@ class DollarGamePayoff(PayoffScheme):
     def get_win(self, a_i, total_action):
         majority = -1 if total_action < 0 else 1
         return a_i == majority
-    
+
+PAYOFF_REGISTRY = {
+    "BinaryMG": BinaryMGPayoff(),
+    "ScaledMG": ScaledMGPayoff(),
+    "SmallMinority": SmallMinorityPayoff(),
+    "DollarGame": DollarGamePayoff()}
