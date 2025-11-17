@@ -8,6 +8,10 @@ Created on Thu Jul 17 20:57:58 2025
 
 from core.player import Player
 from core.m_maker import MarketMaker
+from core.population_factory import PopulationFactory
+from core.players_factory import build_players
+from core.game_config import GameConfig
+from data.stats_recorder import StatsRecorder
 import numpy as np
 
 SAFE_MAX = 1e200
@@ -35,69 +39,51 @@ class Game:
     payoff_scheme : TYPE, optional
         DESCRIPTION. The default is None.
     price init:  TYPE, 
-
     Returns
     -------
     None.
 
     """
-    def __init__(self,
-                 num_players=None,
-                 memory=None,
-                 memory_list=None,
-                 num_strategies=2,
-                 rounds=1000,
-                 payoff_scheme=None,
-                 price_init=100,
-                 lambda_value=None,
-                 market_maker=None,
-                 position_limit=None):
+    def __init__(self, population_spec, cfg, PlayerClass):
 
-        self.num_players = num_players
-        self.memory_list = memory_list
-        self.memory = memory if memory_list is None else max(memory_list)
-        self.num_strategies = num_strategies
-        self.rounds = rounds
-        self.payoff_scheme = payoff_scheme
-        self.history = list(np.random.choice([-1, 1], size=self.memory))
-        self.actions = []
-        self.players = []
-        self.prices = []
-        self.price_init = price_init
-        self.prices= [self.price_init]
-        self.returns = []
-        if lambda_value is not None:
-            self.lambda_value = lambda_value
-        else:
-            self.lambda_value = 30 * num_players   # sets standard lambda for all games
-        self.market_maker = market_maker
+        self.cfg = cfg
+        self.rng = np.random.default_rng(cfg.seed)
+        self.players, self.meta, self.cohort_id = build_players(
+            population_spec, 
+            PlayerClass,
+            rng=self.rng,
+            shuffle=True,
+            per_player_seeds=False,
+            master_seed=cfg.seed
+            )
+        self.n = len(self.players)
+        self.rounds = cfg.rounds
+        self.lambda_value = cfg.lambda_
+        self.price = self.cfg.price
+        self.max_memory = max(p.memory for p in self.players)
+        self.history=list(np.random.choice([-1, +1], size=self.max_memory))
+        self.A = 0
+        
+        k_max = max(p.num_strategies for p in self.players)
+        self.stats = StatsRecorder(
+            N = self.n,
+            rounds = self.rounds,
+            k_max = k_max,
+            record_agent_series=True,
+            )
+
+        if self.lambda_value is None:
+            self.lambda_value = 30 * self.n   # sets standard lambda for all games
+        self.market_maker = cfg.mm
         self.mm = None
-
-        if memory_list is not None:
-            # For each value of memory in memory_list, create num_players agents
-            for m in memory_list:
-                for _ in range(num_players):
-                    self.players.append(Player(memory=m,
-                                               num_strategies=num_strategies,
-                                               position_limit=position_limit)
-                                        )
-            if len(self.players) % 2 == 0:
-                self.players.append(Player(memory=memory_list[0],
-                                           num_strategies=num_strategies,
-                                           position_limit=position_limit)
-                                    )
-        else:
-            self.players = [Player(memory, num_strategies,
-                                   position_limit=position_limit)
-                            for _ in range(num_players)]
-        self.num_players = len(self.players)
-        self.mm= MarketMaker() if market_maker is not None else None
+        
+        self.mm= MarketMaker() if self.market_maker is not None else None
 
     def _reset_for_run(self):
-        self.history = list(np.random.choice([-1, 1], size=self.memory))
-        self.prices = [self.price_init]
+        self.history = list(np.random.choice([-1, 1], size=self.max_memory))
+        self.price = self.cfg.price
         self.returns = []
-        self.actions = []
+        self.A = 0
         if self.mm:
             self.mm.position = 0
             self.mm.position_per_round = []
@@ -135,44 +121,43 @@ class Game:
     def play_round(self):
         """Play a single round of a game."""
 
+
         actions = [p.choose_action(self.history) for p in self.players]
 
-        flow = sum(actions)          # order flow A_t
+        self.A = sum(actions)          # order flow A_t
 
-        if flow == 0:
-            flow = np.random.choice([-1,+1])
-
-        self.actions.append(flow)
-
-        eps_t = 0.0  # or np.random.normal(0, self.noise_std)
+        if self.A == 0:
+            self.A = np.random.choice([-1,+1])
 
         if self.mm:
             pos_sum = self.mm.position
         else:
             pos_sum = 0
 
-        r_t =  flow / self.lambda_value - pos_sum / (self.lambda_value) + eps_t
-        p_next = self.clip_or_nan(self.prices[-1] * np.exp(r_t))
+        r_t =  self.A * self.lambda_value - pos_sum * (self.lambda_value)
+        self.price = self.clip_or_nan(self.price * np.exp(r_t))
 
-        self.prices.append(p_next)
-        self.returns.append(r_t)
         if self.mm:
-            self.mm.update(p_next, flow)
+            self.mm.update(self.price, self.A)
 
         # Player update
         for p in self.players:
-            p.update(self.num_players,
-                     flow,
-                     self.payoff_scheme,
-                     self.prices[-1],
+            p.update(self.n,
+                     self.A,
+                     self.price,
                      self.lambda_value)
 
         # Update “public info” bit for the MG history. Define it on the same 'flow'
-        minority_action = -1 if flow > 0 else 1
-        self.history = (self.history + [minority_action])[-self.memory:]
+        minority_action = -1 if self.A > 0 else 1
+        self.history = (self.history + [minority_action])[-self.max_memory:]
+
 
     def run(self):
         """Resets data for each run of n rounds and plays another round"""
-        self._reset_for_run()
-        for _ in range(self.rounds):
+        #self._reset_for_run()
+        self.stats.record_initial_state(self.price, self.players)
+        for t in range(self.rounds):
             self.play_round()
+            self.stats.record_round(t, self.price, self.A, self.players)
+        results = self.stats.finalize(self.players)
+        return results

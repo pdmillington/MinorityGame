@@ -5,8 +5,10 @@ Created on Thu Jul 17 20:46:56 2025
 
 @author: petermillington
 """
-import numpy as np
 from typing import List, Optional, Dict, Any
+import numpy as np
+
+from payoffs.mg import BinaryMGPayoff
 
 class Player:
     """
@@ -78,20 +80,28 @@ class Player:
     def __init__(self,
                  memory: int,
                  num_strategies: int,
+                 payoff: Optional[str] = None,
                  position_limit: Optional[int] = None,
                  initial_cash: Optional[float] = None,
-                 leverage_limit: Optional[float]=None
+                 leverage_limit: Optional[float] = None,
+                 rng: np.random.Generator | None = None,
+                 seed: int | None = None
                  ):
         self.memory = memory
         self.num_strategies = num_strategies
+        self.payoff = payoff
         self.position_limit = position_limit
         self.initial_cash = initial_cash
         self.leverage_limit = leverage_limit
+
+        self.rng = rng if rng is not None else (
+            np.random.default_rng(seed) if seed is not None else None)
 
         self.strategies = np.random.choice([-1, 1], size=(num_strategies, 2 ** memory))
         self.scores = np.zeros(num_strategies)
 
         self.actions: List[int] = []
+        self.wins = 0
         self.wins_per_round: List[int] = []
         self.index_history: List[int] = []
         self.position_per_round: List[int]= []
@@ -183,7 +193,7 @@ class Player:
         # Action / desired position from the chosen strategy at this index (±1)
         action = int(self.strategies[chosen_idx, index])
 
-        if self.position_limit is not None and abs(self.position + action) > self.position_limit:
+        if self.position_limit != 0 and abs(self.position + action) > self.position_limit:
             action = 0
 
         self.actions.append(action)
@@ -202,7 +212,6 @@ class Player:
     def update(self,
                N,
                flow,
-               payoff_scheme,
                price: float,
                lambda_value: float) -> None:
         """
@@ -237,7 +246,7 @@ class Player:
 
         self._apply_trade(a_i, price)
 
-        mode = getattr(payoff_scheme, "mode", "immediate")
+        mode = getattr(self.payoff, "mode", "immediate")
 
         # Pick which buffer to credit
         buf = self._pending if mode == "immediate" else self._prev
@@ -247,11 +256,15 @@ class Player:
 
         a_used = buf["chosen_action"]
         virt = buf["virt_actions"]  # (S,)
-        reward = payoff_scheme.get_reward(a_used, flow, N, lambda_value)
+        #print(f"a: {a_used}, flow: {flow}, N: {N}, lamba: {lambda_value}")
+        #print(f"{self.payoff}")
+        reward = self.payoff.get_reward(a_used, flow, N, lambda_value)
         self.points += reward
-        virt_rewards = payoff_scheme.get_reward_vector(virt, flow, N, lambda_value)
-        self.scores += virt_rewards
 
-        self.wins_per_round.append(payoff_scheme.get_win(a_used, flow))
+        virt_rewards = self.payoff.get_reward_vector(virt, flow, N, lambda_value)
+        self.scores += virt_rewards
+        self.wins += self.payoff.get_win(a_used, flow)
+
+        self.wins_per_round.append(self.wins)
 
         return

@@ -8,7 +8,7 @@ Created on Tue Nov 11 15:07:44 2025
 import numpy as np
 from numpy.random import SeedSequence
 from payoffs.mg import PAYOFF_REGISTRY
-from core.PopulationFactory import PopulationFactory
+from core.population_factory import PopulationFactory
 
 def build_players(population_spec,
                   PlayerClass,
