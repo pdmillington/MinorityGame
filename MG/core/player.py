@@ -8,8 +8,6 @@ Created on Thu Jul 17 20:46:56 2025
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from payoffs.mg import BinaryMGPayoff
-
 class Player:
     """
     Minority Game / $-Game agent with simple strategy selection and basic
@@ -102,20 +100,18 @@ class Player:
 
         self.actions: List[int] = []
         self.wins = 0
-        self.wins_per_round: List[int] = []
         self.index_history: List[int] = []
         self.position_per_round: List[int]= []
         self.cash_per_round: List[float] = []
-        self.wealth_per_round: List[float] = []
 
         self.strategy: Optional[int] = None
         self.strategy_switches: int = 0
 
         init_cash = float(initial_cash or 0.0)
         self.points = 0.0
+        self.wealth = init_cash
         self.position_per_round.append(0)             # start flat; could be adjusted
         self.cash_per_round.append(init_cash)
-        self.wealth_per_round.append(init_cash)
 
         self._pending: Dict[str, Any] = None        #holds data for current round
         self._prev: Dict[str, Any] = None           #holds data for the previous round
@@ -130,11 +126,6 @@ class Player:
         """Returns current cash from cash per round variable."""
         return self.cash_per_round[-1]
 
-    @property
-    def wealth(self) -> float:
-        """Returns current wealth from wealth per round variable."""
-        return self.wealth_per_round[-1]
-
     # Helper functions
     def _apply_trade(self, action: int, price: float) -> None:
         """
@@ -144,11 +135,10 @@ class Player:
         new_pos = self.position + action
         cash_flow = - action * price
         new_cash_total = self.cash + cash_flow
-        new_wealth = new_pos * price + new_cash_total
+        self.wealth += new_pos * price + new_cash_total
 
         self.position_per_round.append(new_pos)
         self.cash_per_round.append(new_cash_total)
-        self.wealth_per_round.append(new_wealth)
 
     def choose_action(self, full_history: List[int])-> int:
         """
@@ -263,8 +253,6 @@ class Player:
 
         virt_rewards = self.payoff.get_reward_vector(virt, flow, N, lambda_value)
         self.scores += virt_rewards
-        self.wins += self.payoff.get_win(a_used, flow)
-
-        self.wins_per_round.append(self.wins)
+        self.wins = self.payoff.get_win(a_used, flow)
 
         return
