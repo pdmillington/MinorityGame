@@ -9,6 +9,8 @@ Created on Tue Jul 29 19:41:18 2025
 import sys
 import os
 from datetime import datetime
+import json
+import argparse
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import Iterable
@@ -37,6 +39,12 @@ class PhaseDiagramConfig:
     save_path2: str = "plots/phase/return_var_loglog.pdf"
     save_path3: str = "plots/phase/return_mean_loglog.pdf"
     log_path: str = "logs/simulation_log.txt"
+
+def load_config(path: str) -> PhaseDiagramConfig:
+    with open(path, "r") as f:
+        data =json.load(f)
+    return PhaseDiagramConfig(**data)
+
 
 def simulate_single_game(args):
     """
@@ -73,7 +81,7 @@ def simulate_single_game(args):
         lambda_=1/(cfg.num_players * 50),
         mm=None,
         price=100,
-        record_agent_series=False
+        record_agent_series=True
         )
 
     game = Game(
@@ -195,15 +203,18 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
 
     log_simulation(metadata, cfg.log_path)
 
-if __name__ == "__main__":
-    cfg = PhaseDiagramConfig(
-        payoff_key="BinaryMG",
-        m_values=range(3,11),
-        num_players=301,
-        num_strategies=2,
-        position_limit=0,
-        rounds=5_00,
-        num_games=20,
-        market_maker=None,
-    )
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Path to JSON config file for the phase diagram experiment.",
+        )
+    args = parser.parse_args()
+    
+    cfg = load_config(args.config)
     run_phase_diagram(cfg)
+    
+if __name__ == "__main__":
+    main()

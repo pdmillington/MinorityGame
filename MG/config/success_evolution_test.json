@@ -1,0 +1,13 @@
+{
+  "payoff_key": "BinaryMG",
+  "m_value": 7,
+  "num_players": 301,
+  "num_strategies": 2,
+  "position_limit": 0,
+  "rounds": 1000,
+  "intervals": [500, 1000, 2000],
+  "market_maker": null,
+  "price": 100,
+  "record_agent_series": true,
+  "save_path": "plots/success/success_evolution_test.pdf"
+}
