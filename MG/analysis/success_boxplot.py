@@ -26,6 +26,8 @@ from core.game import Game
 from core.player import Player
 from core.game_config import GameConfig
 from analysis.cohort_utils import group_vector_by_cohort, cohort_labels_from_meta, group_timeseries_mean_by_cohort
+from analysis.plot_utils import stat_summary
+from analysis.population_spec import make_hetero_population_spec, build_population_spec
 from utils.logger import log_simulation, RunLogger, _ts, _ensure_dir
 
 @dataclass
@@ -58,13 +60,6 @@ class SuccessBoxplotCohortConfig:
 
 
 # Helper functions
-def ensure_list(x):
-    if isinstance(x, (list, tuple)):
-        return list(x)
-    elif x is None:
-        return []
-    else:
-        return[x]
     
 def load_config(path: str) -> SuccessBoxplotCohortConfig:
     with open(path, "r") as f:
@@ -75,63 +70,8 @@ def load_config(path: str) -> SuccessBoxplotCohortConfig:
     data["cohorts"] = cohorts
     return SuccessBoxplotCohortConfig(**data)
 
-def make_hetero_population_spec(
-    m_values,
-    num_players_per_cohort,
-    payoffs,
-    s_values,
-    position_limit=0
-):
-    cohorts = []
-    
-    m_values = ensure_list(m_values)
-    s_values = ensure_list(s_values)
-    payoffs = ensure_list(payoffs)
-    
-    all_cohorts = list(itertools.product(m_values, s_values, payoffs))
-    
-    if num_players_per_cohort % 2 == 0:
-        add_players = 1
-    else:
-        add_players = 0
-    
-    for idx, (m, s, p) in enumerate(all_cohorts):
-        
-        cohorts.append({
-            "count": num_players_per_cohort + (add_players if idx == 0 else 0),
-            "memory": m,
-            "strategies": s,
-            "payoff": p,
-            "position_limit": position_limit
-        })
-        
-    
-    return {
-        "total": num_players_per_cohort * len(all_cohorts) + add_players,
-        "cohorts": cohorts
-    }
 
-# Top level builder of population
-def build_population_spec(pop_cfg: SuccessBoxplotCohortConfig) -> dict:
-    if pop_cfg.cohorts:
-        cohorts = []
-        for c in pop_cfg.cohorts:
-            cohorts.append({
-                "count":c.count,
-                "memory": c.memory,
-                "payoff": c.payoff,
-                "strategies": c.strategies,
-                "position_limit": c.position_limit,
-                })
-        total = sum(c["count"] for c in cohorts)
-        return {"total": total, "cohorts": cohorts}
-    if pop_cfg.mode == "cartesian":
-        return make_hetero_population_spec(
-            m_values=pop_cfg.m_values,
-            num_players_per_cohort=pop_cfg.num_players_per_cohort,
-            payoffs=pop_cfg.payoffs,
-            s_values=pop_cfg.s_values,
-            position_limit=pop_cfg.position_limit)
+
 # -----------------------------------------------------------------------------
 # Plotting helpers
 # -----------------------------------------------------------------------------
@@ -208,6 +148,61 @@ def plot_metric_mean_line_by_cohort(
 
 def plot_switch_vs_points_corr():
     pass
+
+def plot_price_graph(
+        prices: dict,
+        labels: dict,
+        title: str,
+        ylabel: str,
+        save_dir="plots/success",
+        filename_prefix=None,
+        show_std_band=True,
+        filename_stub="metric_mean_line"):
+
+    _ensure_dir(save_dir)
+
+    p = np.array(prices)
+    x = np.arange(len(p))
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x, p, lw=0.8)
+    ax.set_title(title)
+    ax.set_xlabel("Time")
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    fig.tight_layout()
+
+    # Compute stats
+    try:
+        stats = stat_summary(p)  # expects keys: avg_ret, vol, skew_ret, kurt_ret
+        if all(k in stats for k in ("avg_ret", "vol", "skew_ret", "kurt_ret")):
+            stats_text = (
+                f"μ: {stats['avg_ret']*100:.2f}%\n"
+                f"σ: {stats['vol']*100:.1f}%\n"
+                f"skew: {stats['skew_ret']:.2f}\n"
+                f"kurt: {stats['kurt_ret']:.2f}"
+            )
+            ax.text(
+                0.02, 0.98, stats_text,
+                transform=ax.transAxes,
+                fontsize=7,
+                va='top',
+                bbox=dict(boxstyle='round,pad=0.3',
+                         facecolor='white',
+                         edgecolor='gray',
+                         alpha=0.8,
+                         linewidth=0.5)
+            )
+    except Exception as e:
+        print("stat_summary error:", e)
+    
+    bits = [filename_stub]
+    if filename_prefix: bits.insert(0, filename_prefix)
+    filename = "_".join(bits) + ".pdf"
+    path = os.path.join(save_dir, filename)
+    plt.savefig(path, format="pdf", dpi=300)
+    plt.close()
+    return path
 
 def run_cohort_game(
     population_spec: dict,
@@ -320,8 +315,19 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
         filename_stub="success_mean_line"
     )
 
+    price_path = plot_price_graph(
+        out["results_raw"]["price_series"],
+        labels,
+        title="Price Plot",
+        ylabel="Price",
+        save_dir="plots/success",
+        filename_prefix=prefix,
+        filename_stub="price"
+    )
+    
     logger.log_artifact(box_path)
     logger.log_artifact(wealth_path)
+    logger.log_artifact(mean_path)
     logger.log_artifact(mean_path)
 
     # tidy per-agent table (now includes cohort_id)
