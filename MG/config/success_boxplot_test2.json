@@ -1,0 +1,58 @@
+{
+ "payoffs": "BinaryMG",
+ "num_players_per_cohort": 175,
+ "m_values": 8,
+ "s_values": [2, 4, 6, 8, 10, 12, 14, 16],
+ "position_limit": 0,
+ "rounds": 5000,
+ "market_maker": null,
+ "price": 100, 
+ "save_dir": "plots/success",
+ "mode": "cartesian",
+ "cohorts": [
+    {
+      "count": 175,
+      "memory": 3,
+      "strategies": 4,
+      "payoff": "BinaryMG",
+      "position_limit": 0
+    },
+    {
+      "count": 175,
+      "memory": 9,
+      "strategies": 8,
+      "payoff": "BinaryMG",
+      "position_limit": 0
+    }
+        {
+          "count": 175,
+          "memory": 9,
+          "strategies": 8,
+          "payoff": "BinaryMG",
+          "position_limit": 0
+        }
+        {
+          "count": 175,
+          "memory": 9,
+          "strategies": 8,
+          "payoff": "BinaryMG",
+          "position_limit": 0
+        }
+        {
+          "count": 175,
+          "memory": 9,
+          "strategies": 8,
+          "payoff": "ScaledMG",
+          "position_limit": 0
+        }
+        {
+          "count": 175,
+          "memory": 9,
+          "strategies": 8,
+          "payoff": "DollarGame",
+          "position_limit": 0
+        }
+  ],
+ "seed": 1234
+}
+

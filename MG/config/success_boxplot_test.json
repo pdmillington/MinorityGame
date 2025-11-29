@@ -1,0 +1,15 @@
+{
+ "payoffs": ["BinaryMG", "ScaledMG", "DollarGame"],
+ "num_players_per_cohort": 175,
+ "m_values": [3, 5, 8],
+ "s_values": [ 4, 8, 12],
+ "position_limit": 0,
+ "rounds": 5000,
+ "market_maker": null,
+ "price": 100, 
+ "save_dir": "plots/success",
+ "mode": "cartesian",
+ "cohorts": null,
+ "seed": 1234
+}
+
