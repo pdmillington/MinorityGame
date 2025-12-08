@@ -31,30 +31,18 @@ class Player:
         Shape (num_strategies, 2**memory). Entries are in {-1, +1}.
     scores : np.ndarray
         Shape (num_strategies,). Virtual performance score per strategy.
-    actions : List[int]
-        Realized actions (±1 or 0 after position-limit clipping) per round.
-    wins_per_round : List[int]
-        Optional per-round “win” tracking (not updated inside this class).
-    index_history : List[int]
-        Strategy-table indices used each round (0..2**memory-1).
     points : float
         Accumulated payoff points (from `payoff_scheme.get_reward`).
     position : int
         Current inventory/position (updates by realized action).
-    position_per_round : List[int]
-        Position time series.
     cash : float
         Current cash balance (trade cash flows only).
-    cash_per_round : List[float]
-        Per-round cash flow (e.g., `-action * price`).
     strategy_switches : int
         Count of times the chosen strategy index changes.
     strategy : Optional[int]
         Currently selected strategy index.
     wealth : float
         Mark-to-market wealth = position * price + cash (last computed).
-    wealth_per_round : List[float]
-        Wealth time series.
     position_limit : Optional[int]
         If set, absolute cap on position; actions that would breach are clipped to 0.
     initial_cash : Optional[float]
@@ -88,43 +76,37 @@ class Player:
         self.memory = memory
         self.num_strategies = num_strategies
         self.payoff = payoff
-        self.position_limit = position_limit
+        if position_limit in (None, 0):
+            # Treat both None and 0 as "no limit"
+            self.position_limit = None
+        else:
+            self.position_limit = int(position_limit)
         self.initial_cash = initial_cash
         self.leverage_limit = leverage_limit
 
         self.rng = rng if rng is not None else (
             np.random.default_rng(seed) if seed is not None else None)
 
-        self.strategies = np.random.choice([-1, 1], size=(num_strategies, 2 ** memory))
+        if self.rng:
+            self.strategies = self.rng.choice([-1, 1], size=(num_strategies, 2 ** memory))
+        else:
+            self.strategies = np.random.choice([-1, 1], size=(num_strategies, 2 ** memory))
         self.scores = np.zeros(num_strategies)
 
-        self.actions: List[int] = []
         self.wins = 0
-        self.index_history: List[int] = []
-        self.position_per_round: List[int]= []
-        self.cash_per_round: List[float] = []
 
         self.strategy: Optional[int] = None
         self.strategy_switches: int = 0
 
         init_cash = float(initial_cash or 0.0)
+        self.cash = init_cash
         self.points = 0.0
         self.wealth = init_cash
-        self.position_per_round.append(0)             # start flat; could be adjusted
-        self.cash_per_round.append(init_cash)
+        self.position = 0
 
         self._pending: Dict[str, Any] = None        #holds data for current round
         self._prev: Dict[str, Any] = None           #holds data for the previous round
 
-    @property
-    def position(self) -> int:
-        """Returns the current position from the position by round variable"""
-        return self.position_per_round[-1]
-
-    @property
-    def cash(self) -> float:
-        """Returns current cash from cash per round variable."""
-        return self.cash_per_round[-1]
 
     # Helper functions
     def _apply_trade(self, action: int, price: float) -> None:
@@ -132,13 +114,10 @@ class Player:
         Update position, cash and wealth according to history.
         Single source of current position, wealth etc.
         """
-        new_pos = self.position + action
-        cash_flow = - action * price
-        new_cash_total = self.cash + cash_flow
-        self.wealth += new_pos * price + new_cash_total
+        self.position += action
+        self.cash += - action * price
+        self.wealth = self.position * price + self.cash
 
-        self.position_per_round.append(new_pos)
-        self.cash_per_round.append(new_cash_total)
 
     def choose_action(self, full_history: List[int])-> int:
         """
@@ -162,31 +141,27 @@ class Player:
 
         Side Effects
         ------------
-        - Appends to `index_history` and `actions`.
         - Tracks `strategy_switches` and updates `strategy`.
         - Fills `_pending` with the round’s settlement info.
         """
         h = full_history[-self.memory:]
         index = int(''.join(['1' if bit == 1 else '0' for bit in h]), 2)
         virt_actions = self.strategies[:, index]
-        self.index_history.append(index)
         best_strat_idx = np.flatnonzero(self.scores == self.scores.max())
-        chosen_idx = np.random.choice(best_strat_idx)
+        if self.rng:
+            chosen_idx = self.rng.choice(best_strat_idx)
+        else:
+            chosen_idx = np.random.choice(best_strat_idx)
 
         # Track switches & strategy history
-        if self.strategy is not None and chosen_idx != self.strategy:
-            self.strategy_switches += 1
         self.strategy = chosen_idx
-        if hasattr(self, "strategy_history"):
-            self.strategy_history.append(chosen_idx)
 
         # Action / desired position from the chosen strategy at this index (±1)
         action = int(self.strategies[chosen_idx, index])
 
-        if self.position_limit != 0 and abs(self.position + action) > self.position_limit:
-            action = 0
-
-        self.actions.append(action)
+        if self.position_limit is not None:
+            if abs(self.position + action) > self.position_limit:
+                action = 0
 
         # Keep current round decision data and data for last round
         self._prev =  self._pending
@@ -229,8 +204,6 @@ class Player:
           (from `_pending`), regardless of settlement mode.
         - Rewards are applied to `_pending` (immediate) or `_prev` (delayed).
         """
-        if len(self.actions) == 0:
-            return
 
         a_i = self._pending["chosen_action"]
 

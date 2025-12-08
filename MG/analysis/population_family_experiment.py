@@ -88,340 +88,6 @@ def risk_from_wealth(wealth):
     risk = np.var(daily_change)
     return avg_return, risk
 
-def stat_summary(prices, periods_per_year=252):
-    """
-    Calculate statistical measures from a price series.
-    
-    Parameters:
-    -----------
-    prices : array-like
-        Time series of prices
-    periods_per_year : int, optional
-        Number of periods per year for annualization (default: 252 for daily data)
-        
-    Returns:
-    --------
-    dict
-        Dictionary containing:
-        - avg_ret: Mean log return (annualized)
-        - vol: Volatility/standard deviation (annualized)
-        - skew_ret: Skewness of log returns
-        - kurt_ret: Excess kurtosis of log returns
-        - n_obs: Number of return observations
-    """
-    # Input validation
-    prices = np.asarray(prices)
-
-    if len(prices) < 2:
-        raise ValueError("Need at least 2 price observations")
-
-    if np.any(prices <= 0):
-        raise ValueError("Prices must be positive for log returns")
-
-    # Calculate log returns
-    returns = np.diff(np.log(prices))
-
-    # Handle NaN values
-    returns = returns[~np.isnan(returns)]
-
-    if len(returns) == 0:
-        raise ValueError("No valid returns after removing NaN values")
-
-    # Calculate statistics (annualized)
-    stats = {
-        'avg_ret': np.mean(returns) * periods_per_year,  # Annualized mean return
-        'vol': np.std(returns, ddof=1) * np.sqrt(periods_per_year),  # Annualized volatility
-        'skew_ret': skew(returns),  # Skewness (no annualization)
-        'kurt_ret': kurtosis(returns, fisher=True),  # Excess kurtosis (no annualization)
-        'n_obs': len(returns)
-    }
-
-    return stats
-
-# ------------------------------
-# Plotting helpers
-# ------------------------------
-
-def plot_attendance_series(results,
-                           m_values,
-                           s_values,
-                           payoff_scheme_name,
-                           N,
-                           market_maker,
-                           position_limit,
-                           ):
-    #Create 2D axes array
-    fig, axes = plt.subplots(len(m_values),
-                              len(s_values),
-                              figsize=(12, 9),
-                              sharex=True,
-                              sharey=True,
-                              squeeze=False)
-
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            ax = axes[i, j]
-            actions = results[(m, s)]["actions"]
-            actions_av = np.mean(actions)
-            actions_std = np.std(actions)
-            ax.plot(results[(m, s)]["actions"], lw=0.8)
-            ax.set_title(f"m={m}, s={s}", fontsize=10)
-            ax.grid(True, linestyle="--", alpha=0.6)
-            stats_text = (
-                f"μ: {actions_av:.2f}\n"
-                f"σ: {actions_std:.2f}"
-            )
-            # position stat summary in up left with small font
-            ax.text(0.02, 0.98, stats_text,
-                   transform=ax.transAxes,
-                   fontsize=7,
-                   verticalalignment='top',
-                   bbox=dict(boxstyle='round,pad=0.3',
-                            facecolor='white',
-                            edgecolor='gray',
-                            alpha=0.8,
-                            linewidth=0.5))
-            if i == len(m_values) - 1:
-                ax.set_xlabel("Round")
-            if j == 0:
-                ax.set_ylabel("Total Action A(t)")
-
-    fig.suptitle(
-        f"Attendance(t): {payoff_scheme_name}, N={N}, "
-        f"MM={market_maker}, Limit={position_limit}",
-        y=0.995
-    )
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    return fig
-
-def plot_price_graph(results,
-                     m_values,
-                     s_values,
-                     payoff_scheme_name,
-                     N,
-                     market_maker,
-                     position_limit
-                     ):
-    """
-    Build a grid of price time series plots and return the Matplotlib Figure.
-    This function performs no filesystem I/O (no save).
-    """
-    # Always create a 2D array
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=False,
-                             squeeze=False)
-
-    # Extract prices from dictionary and plot for each m, s
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            p = results[(m, s)]["prices"]
-            ax = axes[i, j]
-
-            # Draw price graphs
-            ax.plot(p, lw=0.8)
-            ax.set_title(f"m={m}, s={s}", fontsize=10)
-            ax.grid(True, linestyle="--", alpha=0.6)
-
-            # Compute stats
-            try:
-                stats = stat_summary(p)  # expects keys: avg_ret, vol, skew_ret, kurt_ret
-                if all(k in stats for k in ("avg_ret", "vol", "skew_ret", "kurt_ret")):
-                    stats_text = (
-                        f"μ: {stats['avg_ret']*100:.2f}%\n"
-                        f"σ: {stats['vol']*100:.1f}%\n"
-                        f"skew: {stats['skew_ret']:.2f}\n"
-                        f"kurt: {stats['kurt_ret']:.2f}"
-                    )
-                    ax.text(
-                        0.02, 0.98, stats_text,
-                        transform=ax.transAxes,
-                        fontsize=7,
-                        va='top',
-                        bbox=dict(boxstyle='round,pad=0.3',
-                                 facecolor='white',
-                                 edgecolor='gray',
-                                 alpha=0.8,
-                                 linewidth=0.5)
-                    )
-            except Exception:
-                # Keep plotting even if stats fail
-                pass
-
-            if i == len(m_values)-1:
-                ax.set_xlabel("Round")
-            if j == 0:
-                ax.set_ylabel("Price")
-
-    fig.suptitle(
-        f"Price(t): {payoff_scheme_name}, N={N}, "
-        f"MM={market_maker}, Limit={position_limit}",
-        y=0.995
-    )
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-
-    return fig
-
-def plot_returns_scatter(results,
-                         m_values,
-                         s_values,
-                         payoff_scheme_name,
-                         N,
-                         market_maker,
-                         position_limit
-                         ):
-    """
-    Plot returns(t+1) vs returns(t) generated by the game's price series and
-    calculates autocorrelation.
-    """
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=True,
-                             squeeze=False)
-
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            ax = axes[i, j]
-            prices = results[(m, s)]["prices"]
-            returns = returns_from_prices(prices)
-            auto_corr = autocorr_lag(returns)
-            ax.scatter(returns[1:], returns[:-1], alpha=0.6)
-          
-            ax.set_title(f"r(t+1) vs r(t); ρ₁ = {auto_corr:.3f}")
-            ax.grid(True, linestyle="--", alpha=0.6)
-            if i == len(m_values) - 1:
-                ax.set_xlabel("r(t+1) (basis points)")
-            if j == 0:
-                ax.set_ylabel("r(t) (basis points)")
-    to_bps = lambda x, pos: f"{x*1e4:.0f} bp"  # 1 bp = 0.0001 = 0.01%
-    for a in axes.ravel():
-        a.xaxis.set_major_locator(MaxNLocator(nbins=5, prune='both'))
-        a.yaxis.set_major_locator(MaxNLocator(nbins=5, prune='both'))
-        a.xaxis.set_major_formatter(FuncFormatter(to_bps))
-        a.yaxis.set_major_formatter(FuncFormatter(to_bps))
-        a.xaxis.set_minor_locator(AutoMinorLocator())
-        a.yaxis.set_minor_locator(AutoMinorLocator())
-        a.grid(True, which='major', linestyle='--', alpha=0.6)
-        a.grid(True, which='minor', linestyle=':',  alpha=0.3)
-
-
-    fig.suptitle(f"Return Autocorrelation: {payoff_scheme_name}, N={N}, "
-                 f"MM={market_maker}, Limit={position_limit}", fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    return fig
-
-def plot_attendance_distribution(results,
-                                 m_values,
-                                 s_values,
-                                 payoff_scheme_name,
-                                 N,
-                                 market_maker,
-                                 position_limit,
-                                 ):
-    """
-    Build a grid of attendance distribution plots and return the Matplotlib Figure.
-    This function performs no filesystem I/O (no save).
-    """
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=True,
-                             squeeze=False)
-
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            ax = axes[i, j]
-            actions = results[(m, s)]["actions"]
-            actions_av = np.mean(actions)
-            actions_std = np.std(actions)
-            ax.hist(actions, bins=30, alpha=0.75, edgecolor='black')
-            ax.set_title(f"m={m}, s={s}", fontsize=10)
-            ax.grid(True, linestyle="--", alpha=0.6)
-            stats_text = (
-                f"μ: {actions_av:.2f}\n"
-                f"σ: {actions_std:.2f}"
-            )
-            # position stat summary in up left with small font
-            ax.text(0.02, 0.98, stats_text,
-                   transform=ax.transAxes,
-                   fontsize=7,
-                   verticalalignment='top',
-                   bbox=dict(boxstyle='round,pad=0.3',
-                            facecolor='white',
-                            edgecolor='gray',
-                            alpha=0.8,
-                            linewidth=0.5))
-            if i == len(m_values) - 1:
-                ax.set_xlabel("Total Action A(t)")
-            if j == 0:
-                ax.set_ylabel("Frequency")
-
-    fig.suptitle(f"Attendance Frequency Distribution: {payoff_scheme_name}, "
-                 f"N={N}, MM={market_maker}, Limit={position_limit}", fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    return fig
-
-def plot_wealth_distribution(results,
-                             m_values,
-                             s_values,
-                             payoff_scheme_name,
-                             N,
-                             market_maker,
-                             position_limit,
-                             ):
-    """
-    Produces a plot of the distrubition of wealth among the agents and returns the
-    matplotlib figure.  This function does not save the figure.
-    """
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=True,
-                             squeeze=False)
-
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            ax = axes[i, j]
-            w = results[(m, s)]["wealth"]
-            w_av = np.mean(w)
-            w_std = np.std(w)
-            ax.hist(results[(m, s)]["wealth"], bins=30, alpha=0.75, edgecolor='black')
-            ax.set_title(f"m={m}, s={s}", fontsize=10)
-            ax.grid(True, linestyle="--", alpha=0.6)
-            stats_text = (
-                f"μ: {w_av:.1f}\n"
-                f"σ: {w_std:.1f}"
-            )
-            # position stat summary in up left with small font
-            ax.text(0.02, 0.98, stats_text,
-                   transform=ax.transAxes,
-                   fontsize=7,
-                   verticalalignment='top',
-                   bbox=dict(boxstyle='round,pad=0.3',
-                            facecolor='white',
-                            edgecolor='gray',
-                            alpha=0.8,
-                            linewidth=0.5))
-            if i == len(m_values) - 1:
-                ax.set_xlabel("Agent Terminal Wealth")
-            if j == 0:
-                ax.set_ylabel("Frequency")
-
-    fig.suptitle(f"Agent Wealth Distribution: {payoff_scheme_name}, N={N},"
-                 f" MM={market_maker}, Limit={position_limit}", fontsize=14)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    return fig
-
 def plot_point_distributions(results,
                              m_values,
                              s_values,
@@ -583,85 +249,8 @@ def plot_risk_return(results,
 
     return fig
 
-def plot_correlation_points_wealth(results,
-                     m_values,
-                     s_values,
-                     payoff_scheme_name,
-                     N,
-                     market_maker,
-                     position_limit,
-                     ):
-    """
-    Matplotlib scatter showing correlation between points and wealth for agents.
-    """
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=True,
-                             squeeze=False)
 
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            w = np.array(results[(m, s)]["wealth"])
-            p = np.array(results[(m, s)]["points"])
-            ax=axes[i,j]
-            ac1 = float(np.corrcoef(p, w)[0, 1])
-            ax.scatter(p, w, s=6, alpha=0.6)
-            ax.set_title(f"m={m}, s={s}; ρ = {ac1:.3f}")
-            ax.grid(True, linestyle="--", alpha=0.6)
-            if i == len(m_values)-1:
-                ax.set_xlabel("wealth")
-            if j == 0:
-                ax.set_ylabel("points")
-
-    fig.suptitle(f"Points vs Wealth: {payoff_scheme_name}, N={N}, "
-                 f"MM={market_maker}, Limit={position_limit}")
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-
-    return fig
-
-def plot_correlation_switches_wealth(results,
-                     m_values,
-                     s_values,
-                     payoff_scheme_name,
-                     N,
-                     market_maker,
-                     position_limit,
-                     ):
-    """
-    Generates scatter plot of number of switches and terminal wealth of the agents.
-    """
-    fig, axes = plt.subplots(len(m_values),
-                             len(s_values),
-                             figsize=(12, 9),
-                             sharex=True,
-                             sharey=True,
-                             squeeze=False)
-
-    for i, m in enumerate(m_values):
-        for j, s in enumerate(s_values):
-            w = np.array(results[(m, s)]["wealth"])
-            sw = np.array(results[(m, s)]["strategy_switches"])
-            ax=axes[i,j]
-            ac2 = float(np.corrcoef(sw, w)[0, 1])
-            ax.scatter(sw, w, s=6, alpha=0.6)
-            ax.set_title(f"m={m}, s={s}; ρ = {ac2:.3f}")
-            ax.grid(True, linestyle="--", alpha=0.6)
-            if i == len(m_values)-1:
-                ax.set_xlabel("Wealth")
-            if j == 0:
-                ax.set_ylabel("Strategy Switches")
-
-    fig.suptitle(f"Strat switches vs Wealth: {payoff_scheme_name}, N={N}, "
-                 f"MM={market_maker}, Limit={position_limit}")
-    fig.tight_layout(rect=[0, 0, 1, 0.98])
-
-    return fig
-
-# -----------------------------------------
 # Metrics helper for logging
-# -----------------------------------------
 
 def summarize_cell(cell):
     """Compute compact metrics for a (m,s) cell: mean/std of success, var(A), mean points."""
@@ -675,9 +264,7 @@ def summarize_cell(cell):
         "mean_points": float(np.mean(pts)) if pts.size else np.nan,
         }
 
-# --------------------------------------
 # Main
-# --------------------------------------
 
 def run_population_family(family_cfg, game_cfg, Player):
     """
@@ -719,6 +306,8 @@ def plot_family_grid(fam_cfg: PopulationFamilyConfig, game_cfg: GameConfig):
         "extract2": None,
         "plot_fn": plot_series,          # your callback
         "y_label": "Attendance A_t",
+        "x_label": "Round",
+        "stat_sum": True,
         "stub": "attendance",
     },
     "price_series": {
@@ -726,6 +315,8 @@ def plot_family_grid(fam_cfg: PopulationFamilyConfig, game_cfg: GameConfig):
         "extract2": None,
         "plot_fn": plot_series,
         "y_label": "Price",
+        "x_label": "Time/Round",
+        "stat_sum": True,
         "stub": "price",
     },
     "A_series_attend": {
@@ -733,17 +324,49 @@ def plot_family_grid(fam_cfg: PopulationFamilyConfig, game_cfg: GameConfig):
         "extract2": None,
         "plot_fn": plot_hist,          # your callback
         "y_label": "Frequency",
+        "x_label": "Attendance",
+        "stat_sum": False,
         "stub": "attendance_hist",
     },
-    "wealth_points":{
+    "succes_rates": {
+        "extract": lambda res: res["final_wins"]/game_cfg.rounds,
+        "extract2": None,
+        "plot_fn": plot_hist,
+        "y_label": "Frequency",
+        "x_label": "Success Rate",
+        "stat_sum": False,
+        "stub": "success_hist",
+    },
+    "wealth_wins":{
         "extract": lambda res: res["final_wealth"],
-        "extract2": lambda res: res["final_wins"],
+        "extract2": lambda res: res["final_wins"]/game_cfg.rounds,
         "plot_fn": plot_scatter,
-        "y_label": "Wealth",
-        "stub": "wlth_v_wins",
+        "x_label": "Wealth",
+        "y_label": "Win Frequency",
+        "stat_sum": False,
+        "stub": "wealth_v_wins",
+    },
+    "wealth_switches":{
+        "extract": lambda res: res["final_wealth"],
+        "extract2": lambda res: res["strategy_switches"],
+        "plot_fn": plot_scatter,
+        "y_label": "Num strat switches",
+        "x_label": "Wealth",
+        "stat_sum": False,
+        "stub": "wealth_v_switches",
+    },
+    "returns_autocorr":{
+        "extract": lambda res: returns_from_prices(res["price_series"])[1:],
+        "extract2": lambda res: returns_from_prices(res["price_series"])[:-1],
+        "plot_fn": plot_scatter,
+        "y_label": "r(t+1)",
+        "x_label": "r(t)",
+        "stat_sum": False,
+        "stub": "returns_autocorr",
     },
     # add more metrics here later
 }
+
     for metric_name, spec in metric_specs.items():
         
         paths = []
@@ -753,19 +376,36 @@ def plot_family_grid(fam_cfg: PopulationFamilyConfig, game_cfg: GameConfig):
             items2 = [spec["extract2"](res) for _, res in results]
         else:
             items2 = None
-        titles = [f"{fam_cfg.vary} = {v}" for v, _ in results]
+        
+        suptitle = suptitle = f"{metric_name} by {fam_cfg.target_payoff} {fam_cfg.vary}"
+        
+        if metric_name == "returns_autocorr":
+            # per-panel autocorr
+            rhos = [
+                autocorr_lag(returns_from_prices(res["price_series"]))
+                for _, res in results
+            ]
+            titles = [
+                f"{fam_cfg.vary} = {v}, ρ₁ = {rho:.3f}"
+                for (v, _), rho in zip(results, rhos)
+            ]
+
+        else:
+            titles = [f"{fam_cfg.target_payoff} {fam_cfg.vary} = {v}" for v, _ in results]
+
         
         p = plot_population_grid(items=items,
                               plot_fn = spec["plot_fn"],
-                              suptitle=f'{metric_name} by population variant', 
+                              titles = titles,
+                              suptitle=suptitle, 
                               save_dir=plots_dir,
-                              x_label="Round",
+                              x_label=spec["x_label"],
                               y_label=spec["y_label"],
+                              stat_sum=spec["stat_sum"],
                               filename_prefix=prefix,
                               filename_stub=spec["stub"],
                               items2=items2)
         paths.append(p)
-    print(paths)
 
     """
    

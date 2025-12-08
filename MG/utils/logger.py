@@ -10,16 +10,16 @@ import os
 import json
 import shutil
 import random
-import numpy as np
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+import subprocess
 
+import numpy as np
 import pandas as pd
 
 
-# -----------------------------
 # Simple append-only text logger
-# -----------------------------
 def log_simulation(metadata: List[str], log_path: str = "logs/simulation_log.txt") -> None:
     """
     Append human-readable metadata lines to a single rolling log file.
@@ -34,15 +34,23 @@ def log_simulation(metadata: List[str], log_path: str = "logs/simulation_log.txt
         f.write("=" * 60 + "\n")
 
 
-# -----------------------------
 # General-purpose run logger
-# -----------------------------
 def _ts() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
+# git commit capture helper
+
+def _git_commit_hash() -> Optional[str]:
+    try:
+        return subprocess.check_output(
+            ["git', 'rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            ).decode.strip()
+    except Exception:
+        return None
 
 class RunLogger:
     """
@@ -86,7 +94,7 @@ class RunLogger:
         self._metrics_path = os.path.join(self.save_dir, "metrics.csv")
         self._run_info_path = os.path.join(self.save_dir, "run_info.json")
         self._metrics_header_written = False
-        
+
         self.seed = seed
         if seed is not None:
             random.seed(seed)
@@ -102,8 +110,33 @@ class RunLogger:
             "extra_info": extra_info or {},
             "seed": seed,
             "save_dir": self.save_dir,
+            "git_commit": _git_commit_hash()
         }
         self._write_run_info()
+        
+    def log_config(self, config: Any, filename: str = "config_used.json") -> str:
+        """
+        Snapshot the config used for this run into the run directory.
+        config can be a dataclass instance, a dictionary, any object with a to_dict method
+        """
+        if is_dataclass(config):
+            cfg_dict = asdict(config)
+        elif isinstance(config, dict):
+            cfg_dict = config
+        elif hasattr(config, "to_dict"):
+            cfg_dict = config.to_dict()
+        else:
+            cfg_dict = config.__dict__
+            
+        path = os.path.join(self.save_dir, filename)
+        with open(path, "w") as f:
+            json.dump(cfg_dict, f, indent=2)
+        
+        self.run_info.setdefault("artifacts", {})
+        self.run_info["artifacts"]["config"] = filename
+        self._write_run_info()
+        return path
+            
 
     # -------- Core writers --------
     def _write_run_info(self) -> None:
@@ -188,6 +221,12 @@ class RunLogger:
         path = os.path.join(self.save_dir, name)
         with open(path, "w") as f:
             f.write("\n".join(str(x) for x in lines) + "\n")
+        return path
+
+    def subdir(self, *parts: str) -> str:
+        """Return (and create) a subdirectory path under this run dir."""
+        path = os.path.join(self.save_dir, *parts)
+        os.makedirs(path, exist_ok=True)
         return path
 
     # -------- Convenience getters --------

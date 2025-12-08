@@ -29,8 +29,8 @@ class PopulationFactory:
 
         payoff_map = {"BinaryMG":0,
                       "ScaledMG":1,
-                      "SmallMinorityPayoff()":2,
-                      "DollarGamePayoff()": 3}
+                      "SmallMinority":2,
+                      "DollarGame": 3}
         memory      = np.empty(total, dtype=np.int32)
         strategies  = np.empty(total, dtype=np.int16)
         payoff_code = np.empty(total, dtype=np.int8)

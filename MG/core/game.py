@@ -95,10 +95,6 @@ class Game:
         for p in self.players:
             p.strategies = np.random.choice([-1, 1], size=(p.num_strategies, 2 ** p.memory))
             p.scores = np.zeros(p.num_strategies)
-            p.actions = []
-            p.wins_per_round = []
-            p.dollar_per_round = []
-            p.index_history = []
             p.points = 0
             p.pos_sumition_per_round = []
             p.position_per_round.append(0)
@@ -159,5 +155,12 @@ class Game:
         for t in range(self.rounds):
             self.play_round()
             self.stats.record_round(t, self.price, self.A, self.players)
+            
         results = self.stats.finalize(self.players)
+        
+        results["cohort_ids"] = np.array(self.cohort_id, dtype=int)
+        results["cohorts"] = self.meta["cohorts"]
+        
+        self.results = results
+        
         return results
