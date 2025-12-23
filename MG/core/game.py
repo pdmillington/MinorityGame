@@ -7,6 +7,7 @@ Created on Thu Jul 17 20:57:58 2025
 """
 
 from core.player import Player
+from core.noise_player import NoisePlayer
 from core.m_maker import MarketMaker
 from core.population_factory import PopulationFactory
 from core.players_factory import build_players
@@ -44,13 +45,13 @@ class Game:
     None.
 
     """
-    def __init__(self, population_spec, cfg, PlayerClass):
+    def __init__(self, population_spec, cfg, agent_class_map=None):
 
         self.cfg = cfg
         self.rng = np.random.default_rng(cfg.seed)
         self.players, self.meta, self.cohort_id = build_players(
             population_spec, 
-            PlayerClass,
+            agent_class_map={"strategic": Player, "noise": NoisePlayer},
             rng=self.rng,
             shuffle=True,
             per_player_seeds=False,
