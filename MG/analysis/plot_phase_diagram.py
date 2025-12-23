@@ -31,7 +31,10 @@ class PhaseDiagramConfig:
     m_values: Iterable[int] = range(3,11)
     num_players: int = 301
     num_strategies: int = 2
-    position_limit: int = 0        #0 means no limit
+    position_limit: int = None        
+    noise_players: int = 0
+    noise_allow_no_action: bool = False
+    noise_position_limit: int = None
     rounds: int = 10_000
     num_games: int = 20
     market_maker: bool | None = None
@@ -64,10 +67,11 @@ def simulate_single_game(args):
     m, cfg = args
 
     population_spec = {
-        "total": cfg.num_players,
+        "total": cfg.num_players + cfg.noise_players,
         "cohorts":[
             {
                 "count": cfg.num_players,
+                "agent_type": "strategic",
                 "memory": m,
                 "payoff": cfg.payoff_key,
                 "strategies": cfg.num_strategies,
@@ -75,6 +79,14 @@ def simulate_single_game(args):
                 }
             ]
         }
+
+    if cfg.noise_players> 0:
+        population_spec["cohorts"].append(
+            {
+                "agent_type": "noise",
+                "count": cfg.noise_players,
+                "allow_no_action": cfg.noise_allow_no_action,
+                "position_limit": cfg.noise_position_limit})
 
     cfg_game = GameConfig(
         rounds=cfg.rounds,
@@ -87,19 +99,17 @@ def simulate_single_game(args):
     game = Game(
         population_spec=population_spec,
         cfg=cfg_game,
-        PlayerClass=Player
-
     )
     results = game.run()
 
-    A_series = results["A_series"]
-    prices = results["price_series"]
+    attendance = results["Attendance"]
+    prices = results["Prices"]
 
     prices_safe = np.where(prices <= 0, np.nan, prices)
     log_prices = np.log(prices_safe)
     returns = np.diff(log_prices)           # length rounds
 
-    sigma2 = np.nanvar(A_series)
+    sigma2 = np.nanvar(attendance)
     var_prices = np.nanvar(prices)
     mean_returns = np.nanmean(returns)
     var_returns = np.nanvar(returns)
