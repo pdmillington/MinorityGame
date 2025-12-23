@@ -4,6 +4,10 @@
 Created on Sat Nov 29 17:24:39 2025
 
 @author: petermillington
+
+Experiment API: Constructs cohort dictionaries from experiment configurations.
+Applies transformations for successive experiments
+Returns plain, JSON serialisable population_spec: dict
 """
 from __future__ import annotations
 import itertools
@@ -20,10 +24,12 @@ def ensure_list(x):
 @dataclass
 class CohortConfig:
     count: int
-    memory: int
-    strategies: int
-    payoff: str
-    position_limit: int = 0
+    memory: Optional[int] = None
+    strategies: Optional[int] = None
+    payoff: Optional[str] = None
+    position_limit: Optional[int] = None
+    agent_type: str = "strategic"
+    allow_no_action: bool = False
 
 @dataclass
 class PopulationConfig:
@@ -36,6 +42,9 @@ class PopulationConfig:
     m_values: Iterable[int]|int
     s_values: Iterable[int]|int
     position_limit: int = 0
+    noise_players: int = 0
+    noise_allow_no_action: bool = False
+    noise_position_limit: int = None
     rounds: int = 1_000
     lambda_: float = None
     market_maker: bool | None = None
@@ -72,26 +81,29 @@ class PopulationFamilyConfig:
     mode: str = "cartesian"   #or "zip"
     seed: str = 1234
 
+#TODO: deal with noise cohorts
 def vary_memory(base_cohorts, delta_m):
     new_cohorts = []
     for c in base_cohorts:
         new_cohorts.append({
             **c,
-            "memory": + delta_m
+            "memory": c["memory"] + delta_m
             })
     total = sum(c["count"] for c in new_cohorts)
     return {"total": total, "cohorts": new_cohorts}
 
+#TODO: deal with noise cohorts
 def vary_strategies(base_cohorts, delta_s):
     new_cohorts = []
     for c in base_cohorts:
         new_cohorts.append({
             **c,
-            "strategies": + delta_s
+            "strategies": c["strategies"] + delta_s
             })
     total = sum(c["count"] for c in new_cohorts)
     return {"total": total, "cohorts": new_cohorts}
 
+#TODO: deal with noise cohorts
 def vary_total_size(base_cohorts, N_target):
     base_total = sum(c["count"] for c in base_cohorts)
     factor = N_target / base_total
@@ -116,6 +128,7 @@ def rescale_group(group, target_total):
         out.append({**c, "count": int(round(c["count"] * factor))})
     return out
 
+#TODO: deal with noise cohorts
 def vary_payoff_weights(base_cohorts, target_payoff, target_share):
     A = [c for c in base_cohorts if c["payoff"] == target_payoff]
     B = [c for c in base_cohorts if c["payoff"] != target_payoff]
@@ -135,12 +148,14 @@ def vary_payoff_weights(base_cohorts, target_payoff, target_share):
 
     return {"total": total, "cohorts": cohorts}
 
+#TODO: deal with noise cohorts
 def make_hetero_population_spec(
     m_values,
     num_players_per_cohort: int,
     payoffs,
     s_values,
     position_limit: int = 0,
+    agent_type: str = "strategic"
 ):
     """
     Cartesian builder:
@@ -179,13 +194,22 @@ def build_population_spec(pop_cfg: PopulationConfig) -> dict:
     if pop_cfg.cohorts:
         cohorts = []
         for c in pop_cfg.cohorts:
-            cohorts.append({
-                "count":c.count,
-                "memory": c.memory,
-                "payoff": c.payoff,
-                "strategies": c.strategies,
-                "position_limit": c.position_limit,
-                })
+            if c.agent_type == "strategic":
+                cohorts.append({
+                    "count":c.count,
+                    "memory": c.memory,
+                    "payoff": c.payoff,
+                    "strategies": c.strategies,
+                    "position_limit": c.position_limit,
+                    "agent_type": c.agent_type,
+                    })
+            if c.agent_type == "noise":
+                cohorts.append({
+                    "count": c.count,
+                    "position_limit": c.position_limit,
+                    "agent_type": c.agent_type,
+                    "allow_no_action": c.allow_no_action,
+                    })
         total = sum(c["count"] for c in cohorts)
         return {"total": total, "cohorts": cohorts}
 
@@ -199,6 +223,7 @@ def build_population_spec(pop_cfg: PopulationConfig) -> dict:
 
     return print("Not possible to construct a population")
 
+#TODO: deal with noise cohorts
 def build_population_variant(family_cfg: PopulationFamilyConfig, value)-> dict:
     base =family_cfg.base_cohorts
 
@@ -211,7 +236,7 @@ def build_population_variant(family_cfg: PopulationFamilyConfig, value)-> dict:
     if family_cfg.vary == "total_size":
         return vary_total_size(base_cohorts=base, N_target=int(value))
 
-    if family_cfg.vary == "payoff_share":
+    if family_cfg.vary == "payoff_weights":
         if family_cfg.target_payoff is None:
             raise ValueError("Target payoff needs to be set.")
         target_payoff = family_cfg.target_payoff
