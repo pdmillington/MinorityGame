@@ -13,206 +13,45 @@ are produced and saved with logging details.
 import sys
 import os
 import json
+import pandas as pd
 import argparse
 from typing import Optional, Dict, Any, List, Iterable
-from dataclasses import dataclass, field
-import itertools
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from core.game import Game
 from core.player import Player
 from core.game_config import GameConfig
 from analysis.cohort_utils import group_vector_by_cohort, cohort_labels_from_meta, group_timeseries_mean_by_cohort
-from analysis.plot_utils import stat_summary
-from analysis.population_spec import make_hetero_population_spec, build_population_spec
-from utils.logger import log_simulation, RunLogger, _ts, _ensure_dir
+from analysis.plot_utils import (
+    plot_metric_boxplot_by_cohort,
+    plot_metric_mean_line_by_cohort,
+    plot_price_graph)
+from analysis.population_spec import build_population_spec, CohortConfig, PopulationConfig
+from utils.logger import log_simulation, RunLogger, _ts
 
-@dataclass
-class CohortConfig:
-    count: int
-    memory: int
-    strategies: int
-    payoff: str
-    position_limit: int = 0
-
-@dataclass
-class SuccessBoxplotCohortConfig:
-    """
-    Dataclass for plotting success by cohort for heterogeneous memory or strategies
-    allowing JSON file input of experiment configuration.
-    """
-    payoffs: Iterable[str]|str
-    num_players_per_cohort: int
-    m_values: Iterable[int]|int
-    s_values: Iterable[int]|int
-    position_limit: int = 0
-    rounds: int = 1_000
-    market_maker: bool | None = None
-    price: float = 100
-    record_agent_series: bool = True
-    save_dir: str = "plots/success"
-    mode: str = "cartesian"   #or "zip"
-    cohorts: List[CohortConfig] = field(default_factory=list)
-    seed: str = 1234
 
 
 # Helper functions
-    
-def load_config(path: str) -> SuccessBoxplotCohortConfig:
+def load_config(path: str) -> PopulationConfig:
     with open(path, "r") as f:
         data =json.load(f)
 
     cohort_dicts = data.get("cohorts") or []
     cohorts = [CohortConfig(**c) for c in cohort_dicts]
     data["cohorts"] = cohorts
-    return SuccessBoxplotCohortConfig(**data)
-
-
-
-# -----------------------------------------------------------------------------
-# Plotting helpers
-# -----------------------------------------------------------------------------
-
-def plot_metric_boxplot_by_cohort(
-    metric_by_cohort: dict,
-    labels: dict,
-    title: str,
-    ylabel: str,
-    save_dir="plots/success",
-    filename_prefix=None,
-    filename_stub="metric_boxplot"
-):
-    _ensure_dir(save_dir)
-
-    cids = sorted(metric_by_cohort.keys())
-    data = [metric_by_cohort[cid] for cid in cids]
-    tick_labels = [labels.get(cid, f"cohort {cid}") for cid in cids]
-
-    plt.figure(figsize=(10, 6))
-    plt.boxplot(data, tick_labels=tick_labels)
-    plt.title(title)
-    plt.xlabel("Cohort")
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.tight_layout()
-
-    bits = [filename_stub]
-    if filename_prefix: bits.insert(0, filename_prefix)
-    filename = "_".join(bits) + ".pdf"
-    path = os.path.join(save_dir, filename)
-    plt.savefig(path, format="pdf", dpi=300)
-    plt.close()
-    return path
-
-def plot_metric_mean_line_by_cohort(
-    metric_by_cohort: dict,
-    labels: dict,
-    title: str,
-    ylabel: str,
-    save_dir="plots/success",
-    filename_prefix=None,
-    show_std_band=True,
-    filename_stub="metric_mean_line"
-):
-    _ensure_dir(save_dir)
-
-    cids = sorted(metric_by_cohort.keys())
-    means = np.array([np.mean(metric_by_cohort[cid]) for cid in cids], float)
-    stds  = np.array([np.std(metric_by_cohort[cid])  for cid in cids], float)
-
-    x = np.arange(len(cids))
-    xticks = [labels.get(cid, f"cohort {cid}") for cid in cids]
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(x, means, marker="o")
-    if show_std_band:
-        plt.fill_between(x, means - stds, means + stds, alpha=0.2)
-
-    plt.xticks(x, xticks, rotation=30, ha="right")
-    plt.title(title)
-    plt.xlabel("Cohort")
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.tight_layout()
-
-    bits = [filename_stub]
-    if filename_prefix: bits.insert(0, filename_prefix)
-    filename = "_".join(bits) + ".pdf"
-    path = os.path.join(save_dir, filename)
-    plt.savefig(path, format="pdf", dpi=300)
-    plt.close()
-    return path
+    return PopulationConfig(**data)
 
 def plot_switch_vs_points_corr():
     pass
 
-def plot_price_graph(
-        prices: dict,
-        labels: dict,
-        title: str,
-        ylabel: str,
-        save_dir="plots/success",
-        filename_prefix=None,
-        show_std_band=True,
-        filename_stub="metric_mean_line"):
-
-    _ensure_dir(save_dir)
-
-    p = np.array(prices)
-    x = np.arange(len(p))
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(x, p, lw=0.8)
-    ax.set_title(title)
-    ax.set_xlabel("Time")
-    ax.set_ylabel(ylabel)
-    ax.grid(True, linestyle="--", alpha=0.6)
-    fig.tight_layout()
-
-    # Compute stats
-    try:
-        stats = stat_summary(p)  # expects keys: avg_ret, vol, skew_ret, kurt_ret
-        if all(k in stats for k in ("avg_ret", "vol", "skew_ret", "kurt_ret")):
-            stats_text = (
-                f"μ: {stats['avg_ret']*100:.2f}%\n"
-                f"σ: {stats['vol']*100:.1f}%\n"
-                f"skew: {stats['skew_ret']:.2f}\n"
-                f"kurt: {stats['kurt_ret']:.2f}"
-            )
-            ax.text(
-                0.02, 0.98, stats_text,
-                transform=ax.transAxes,
-                fontsize=7,
-                va='top',
-                bbox=dict(boxstyle='round,pad=0.3',
-                         facecolor='white',
-                         edgecolor='gray',
-                         alpha=0.8,
-                         linewidth=0.5)
-            )
-    except Exception as e:
-        print("stat_summary error:", e)
-    
-    bits = [filename_stub]
-    if filename_prefix: bits.insert(0, filename_prefix)
-    filename = "_".join(bits) + ".pdf"
-    path = os.path.join(save_dir, filename)
-    plt.savefig(path, format="pdf", dpi=300)
-    plt.close()
-    return path
-
 def run_cohort_game(
     population_spec: dict,
     cfg: GameConfig,
-    PlayerClass=Player
 ):
     """
     Run a cohort-based game and return cohort-grouped metrics.
     """
-    game = Game(population_spec=population_spec, cfg=cfg, PlayerClass=PlayerClass)
+    game = Game(population_spec=population_spec, cfg=cfg)
     results = game.run()
 
     # cohort ids and cohort labels
@@ -254,7 +93,7 @@ def run_cohort_game(
 
 
 
-def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
+def run_success_boxplot(cfg: PopulationConfig):
 
 
     population_spec = build_population_spec(cfg)
@@ -267,7 +106,7 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
         seed=cfg.seed,
         record_agent_series=True
     )
-    
+
     if len(cfg.payoffs)==1:
         payoffs = cfg.payoffs[0]
     else:
@@ -280,7 +119,7 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
         "seed": cfg.seed,
     })
 
-    out = run_cohort_game(population_spec, cfg_game, PlayerClass=Player)
+    out = run_cohort_game(population_spec, cfg_game)
 
     prefix = logger.run_info["start_time"]
     labels = out["labels"]
@@ -288,7 +127,7 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
     box_path = plot_metric_boxplot_by_cohort(
         out["success_by_cohort"],
         labels,
-        title=f"Success by Cohort",
+        title="Success by Cohort",
         ylabel="Success rate",
         save_dir="plots/success",
         filename_prefix=prefix,
@@ -298,7 +137,7 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
     wealth_path = plot_metric_boxplot_by_cohort(
         out["wealth_by_cohort"],
         labels,
-        title=f"Wealth by Cohort",
+        title="Wealth by Cohort",
         ylabel="Final wealth",
         save_dir="plots/success",
         filename_prefix=prefix,
@@ -308,7 +147,7 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
     mean_path = plot_metric_mean_line_by_cohort(
         out["success_by_cohort"],
         labels,
-        title=f"Average Success by Cohort",
+        title="Average Success by Cohort",
         ylabel="Average success rate",
         save_dir="plots/success",
         filename_prefix=prefix,
@@ -316,19 +155,18 @@ def run_success_boxplot(cfg: SuccessBoxplotCohortConfig):
     )
 
     price_path = plot_price_graph(
-        out["results_raw"]["price_series"],
-        labels,
+        out["results_raw"]["Prices"],
         title="Price Plot",
         ylabel="Price",
         save_dir="plots/success",
         filename_prefix=prefix,
         filename_stub="price"
     )
-    
+
     logger.log_artifact(box_path)
     logger.log_artifact(wealth_path)
     logger.log_artifact(mean_path)
-    logger.log_artifact(mean_path)
+    logger.log_artifact(price_path)
 
     # tidy per-agent table (now includes cohort_id)
     results_raw = out["results_raw"]
