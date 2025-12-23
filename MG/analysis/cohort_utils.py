@@ -9,10 +9,14 @@ Created on Mon Nov 24 20:38:22 2025
 import numpy as np
 
 def cohort_labels_from_meta(meta):
+
     labels = {}
     for cid, c in enumerate(meta["cohorts"]):
-        payoff_name = c.payoff.replace("Payoff", "")
-        labels[cid] = f"m={c.memory}\nS={c.strategies}\n{payoff_name}"
+        if c.agent_type == "noise":
+            labels[cid] = "Noise Player"
+        else:
+            payoff_name = c.payoff.replace("Payoff", "")
+            labels[cid] = f"m={c.memory}\nS={c.strategies}\n{payoff_name}"
     return labels
 
 def group_vector_by_cohort(x, cohort_ids):
