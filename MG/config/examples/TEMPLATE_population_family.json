@@ -1,0 +1,35 @@
+{
+  "_description": "Template for population family experiments",
+  "_usage": "Copy this file, rename it, and adjust base_cohorts and vary parameter",
+  "_example": "cp TEMPLATE_population_family.json ../population_families/family_myvariation.json",
+  
+  "rounds": 5000,
+  "price": 100.0,
+  "lambda_": 0.0000667,
+  "market_maker": null,
+  "record_agent_series": false,
+  "seed": 1234,
+
+  "base_cohorts": [
+    {
+      "memory": 5,
+      "strategies": 3,
+      "payoff": "ScaledMG",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 7,
+      "strategies": 4,
+      "payoff": "DollarGame",
+      "count": 500,
+      "position_limit": 0
+    }
+  ],
+
+  "vary": "memory_shift",
+  "_vary_options": ["memory_shift", "strategies_shift", "total_size", "payoff_weights"],
+  "values": [0, 1, 2, 3, 4, 5],
+  "target_payoff": null,
+  "target_tag": null
+}

@@ -1,0 +1,19 @@
+{
+  "_description": "Template for success rate evolution over time",
+  "_usage": "Copy this file, rename it, and adjust parameters",
+  "_example": "cp TEMPLATE_success_evolution.json ../success_analysis/evolution_myexperiment.json",
+  
+  "payoff_key": "ScaledMG",
+  "m_value": 5,
+  "num_players": 301,
+  "num_strategies": 2,
+  "position_limit": 0,
+  
+  "rounds": 10000,
+  "intervals": [100, 500, 1000],
+  
+  "market_maker": null,
+  "price": 100.0,
+  "record_agent_series": false,
+  "save_path": "plots/success/success_evolution_CHANGEME.pdf"
+}
