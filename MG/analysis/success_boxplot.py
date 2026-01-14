@@ -17,9 +17,7 @@ import pandas as pd
 import argparse
 from typing import Optional, Dict, Any, List, Iterable
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import pandas as pd
 from core.game import Game
-from core.player import Player
 from core.game_config import GameConfig
 from analysis.cohort_utils import group_vector_by_cohort, cohort_labels_from_meta, group_timeseries_mean_by_cohort
 from analysis.plot_utils import (

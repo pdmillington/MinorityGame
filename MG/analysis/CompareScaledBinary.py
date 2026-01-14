@@ -210,7 +210,7 @@ def print_attendance_statistics(games):
     print("\n".join(lines))
     return lines
 
-def compare_scaled_vs_binary(m=8, s=5, N=1001, rounds=40000, intervals=[500, 1000, 2000, 5000]):
+def compare_scaled_vs_binary(m=8, s=5, N=501, rounds=10000, intervals=[500, 1000, 2000, 5000]):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_path = f"plots/compare/m{m}_s{s}_r{rounds}_{timestamp}"
 

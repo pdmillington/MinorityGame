@@ -11,7 +11,7 @@ from payoffs.mg import PAYOFF_REGISTRY
 from core.population_factory import PopulationFactory
 
 def build_players(population_spec,
-                  PlayerClass,
+                  agent_class_map,
                   rng=None,
                   shuffle=True,
                   per_player_seeds=False,
@@ -26,33 +26,56 @@ def build_players(population_spec,
     cohort_id_vec = []
 
     # Reproducible child seeds
-    seed_iter = None
-    if per_player_seeds:
-        ss = SeedSequence(master_seed if master_seed is not None else 0)
-        child_seeds = iter(ss.spawn(meta["N"]))
+    child_seeds = None
+    ss = SeedSequence(master_seed if master_seed is not None else 0)
+    child_seeds = iter(ss.spawn(meta["N"]))
+    
+    if agent_class_map is None:
+        raise ValueError("no agent class map defined")
 
     for c_id, c in enumerate(cohorts):
-        payoff_obj = PAYOFF_REGISTRY[c.payoff]
+        agent_type = getattr(c, "agent_type", "strategic")
+        Cls = agent_class_map.get(agent_type)
+        if Cls is None: 
+            raise ValueError(f"Agent class not defined for {agent_type}")
+        
+        plim = None if (c.position_limit is None or c.position_limit == 0) else int(c.position_limit)
+        
+        if agent_type == "strategic":
+            payoff_obj = PAYOFF_REGISTRY[c.payoff]
+            base_kwargs = dict(
+                memory = c.memory,
+                num_strategies = c.strategies,
+                payoff = payoff_obj,
+                position_limit = plim,
+            )
+        elif agent_type == "noise":
+            base_kwargs = dict(
+                position_limit = plim,
+                allow_no_action = getattr(c, "allow_no_action", False)
+            )
+        else:
+            raise ValueError(f"Unknown agent_type={agent_type}")
         
         for _ in range(c.count):
-            kwargs = dict(memory=c.memory, num_strategies=c.strategies,
-                          payoff=payoff_obj, position_limit=c.position_limit)
+            kwargs = dict(base_kwargs)
             if per_player_seeds:
-                kwargs["rng"] = np.random.default_rng(child_seeds.__next__())
-            p = PlayerClass(**kwargs)
+                kwargs["rng"] = np.random.default_rng(next(child_seeds))
+            else:
+                kwargs["rng"] = rng
+
+            p = Cls(**kwargs)
             # Optional, but handy for stats later:
             p.cohort_id = c_id
             players.append(p)
             cohort_id_vec.append(c_id)
 
+    cohort_id_vec = np.array(cohort_id_vec, dtype=int)
     if shuffle:
         # avoid cohort blocks in order (optional)
-
         idx = np.arange(len(players))
-        np.random.default_rng(rng).shuffle(idx)
+        rng.shuffle(idx)
         players = [players[i] for i in idx]
-        cohort_id_vec = np.array(cohort_id_vec, dtype=int)[idx]
-    else:
-        cohort_id_vec = np.array(cohort_id_vec, dtype=int)
-
+        cohort_id_vec = cohort_id_vec[idx]
+   
     return players, meta, cohort_id_vec

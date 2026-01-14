@@ -13,10 +13,12 @@ import numpy as np
 @dataclass(frozen=True)
 class Cohort:
     count: int
-    memory: int
-    payoff: str
-    strategies: int
-    position_limit: int = None
+    memory: int = None
+    payoff: str = None
+    strategies: int = None
+    position_limit: int = 0
+    agent_type: str = "strategic"
+    allow_no_action: bool = False
 
 class PopulationFactory:
     def __init__(self, spec, rng=None):
@@ -38,15 +40,29 @@ class PopulationFactory:
         position_limit = np.empty(total, dtype=np.int64)
 
         i = 0
+        
         for c_id, c in enumerate(cohorts):
-            j = i + c.count
-            memory[i:j]      = c.memory
-            strategies[i:j]  = c.strategies
-            payoff_code[i:j] = payoff_map[c.payoff]
-            cohort_id[i:j]   = c_id
-            position_limit[i:j] = c.position_limit
-            i = j
-
+            if c.agent_type=="noise":
+            
+                j = i + c.count
+                memory[i:j]      = 1
+                strategies[i:j]  = 0
+                payoff_code[i:j] = -1
+                cohort_id[i:j]   = c_id
+                position_limit[i:j] = c.position_limit
+                i = j
+                
+            elif c.agent_type=="strategic":
+                j = i + c.count
+                memory[i:j]      = c.memory
+                strategies[i:j]  = c.strategies
+                payoff_code[i:j] = payoff_map[c.payoff]
+                cohort_id[i:j]   = c_id
+                position_limit[i:j] = c.position_limit
+                i = j
+        for c in cohorts:
+            if c.agent_type == "strategic" and c.memory is None:
+                raise ValueError(f"Strategic cohort missing memory: {c}")
         return {
             "N": total,
             "memory": memory,
@@ -76,8 +92,16 @@ class PopulationFactory:
         remaining = 0 if total is None else total - absol
         if total is not None and remaining < 0:
             raise ValueError("Absolute cohort counts exceed total.")
-        out = [Cohort(p["count"], p["memory"], p["payoff"], p["strategies"], p["position_limit"])
-               for p in parts if isinstance(p["count"], int) and p["count"]>0]
+        out = [Cohort(
+            count=p["count"],
+            memory=p.get("memory"),
+            payoff=p.get("payoff"),
+            strategies=p.get("strategies"),
+            position_limit=p.get("position_limit"),
+            agent_type=p.get("agent_type", "strategic"),
+            allow_no_action=p.get("allow_no_action", False),
+            )
+            for p in parts if isinstance(p["count"], int) and p["count"]>0]
         if props:
             w = np.array([p["count"] for p in props], float); w /= w.sum()
             raw = w * remaining
@@ -85,7 +109,14 @@ class PopulationFactory:
             leftover = remaining - base.sum()
             order = np.argsort(-(raw - base))
             base[order[:leftover]] += 1
-            out += [Cohort(int(c), p["memory"], p["payoff"], p["strategies"], p["position_limit"])
+            out += [Cohort(
+                count=int(c),
+                memory=p.get("memory"),
+                payoff=p.get("payoff"),
+                strategies=p.get("strategies"),
+                position_limit=p.get("position_limit"),
+                agent_type=p.get("agent_type", "strategic"),
+                allow_no_action=p.get("allow_no_action", False))
                     for p, c in zip(props, base) if c>0]
         return out
 
@@ -109,7 +140,14 @@ class PopulationFactory:
         leftover = total - base.sum()
         order = np.argsort(-(counts_raw - base))
         base[order[:leftover]] += 1
-        out = [Cohort(int(c), p["memory"], p["payoff"], p["strategies"], p["position_limit"])
+        out = [Cohort(
+            count=int(c),
+            memory=p.get("memory"),
+            payoff=p.get("payoff"),
+            strategies=p.get("strategies"),
+            position_limit=p.get("position_limit"),
+            agent_type=p.get("agent_type", "strategic"),
+            allow_no_action=p.get("allow_no_action", False))
                for p, c in zip(combos, base) if c>0]
         return out
 
@@ -121,4 +159,9 @@ class PopulationFactory:
         pay = self.rng.choice(S["payoff"]["choice"], p=S["payoff"]["p"], size=total)
         k   = self.rng.choice(S["strategies"]["choice"], p=S["strategies"]["p"], size=total)
         uniq, counts = np.unique(list(zip(mem, pay, k)), axis=0, return_counts=True)
-        return [Cohort(int(c), int(m), str(p), int(s)) for (m,p,s), c in zip(uniq, counts)]
+        return [Cohort(count=int(c),
+                       memory=int(m),
+                       payoff=str(p),
+                       strategies=int(s))
+                for (m,p,s), c in zip(uniq, counts)
+                ]

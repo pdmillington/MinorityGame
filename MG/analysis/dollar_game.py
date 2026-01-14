@@ -7,7 +7,6 @@ Created on Thu Sep 11 15:38:04 2025
 
 Dollar Game Analysis Module
 
-What it does (single-file):
 - Runs a Dollar Game simulation (trend-following by default) or analyzes an existing one
 - Computes diagnostics: autocorrelation of A, variance of A, per-player $ (cumulative and per-round)
 - Builds a synthetic price series with Δp(t+1) = λ·A(t) + ε(t+1)
@@ -18,7 +17,7 @@ What it does (single-file):
 Assumptions:
 - Your Game implements DollarGamePayoff with delayed credit, populating:
 game.actions # list of A(t)
-player.dollar (cumulative) and player.dollar_per_round (per-round), if available
+player.wealth (cumulative) and player.dollar_per_round (per-round), if available
 - If player.dollar_per_round is missing, we derive per-round ≈ diff of cumulative with a leading 0.
 
 Edit the import paths below to match your repo.
@@ -44,7 +43,7 @@ if REPO_ROOT not in sys.path:
 
 # Project imports 
 from core.game import Game
-from payoffs.mg import DollarGamePayoff 
+from payoffs.mg import DollarGamePayoff, BinaryMGPayoff, ScaledMGPayoff 
 from utils.logger import RunLogger, log_simulation
 
 # -----------------------------------------------------------------------------
@@ -120,11 +119,18 @@ def summarize_dollars(players) -> Tuple[np.ndarray, np.ndarray]:
         return cum, per
     return cum, np.zeros((N, 0), dtype=float)
 
+def risk_from_wealth(wealth):
+    """Return two lists of risk and return per player"""
+    daily_return = [wealth[1:]-wealth[:-1]]
+    avg_return = np.mean(daily_return)
+    risk = np.sum(np.square(daily_return - avg_return)) / (len(wealth) - 1)
+    return avg_return, risk
+
 # -----------------------------------------------------------------------------
 # Plotting helpers
 # -----------------------------------------------------------------------------
 
-def plot_action_series(results, m_values, s_values, N, rounds, save_dir):
+def plot_action_series(results, m_values, s_values, N, rounds, save_dir, payoff_scheme):
     
     fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12,9), sharex=True, sharey=True)
     
@@ -141,14 +147,16 @@ def plot_action_series(results, m_values, s_values, N, rounds, save_dir):
    
     plt.suptitle("Buyers-Sellers")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["action_series", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["action_series", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     return path
+
+
      
-def plot_dollar_distribution(results, m_values, s_values, N, rounds, save_dir):
+def plot_dollar_distribution(results, m_values, s_values, N, rounds, save_dir, payoff_scheme):
     
     fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12,9), sharex=True, sharey=True)
     
@@ -163,16 +171,16 @@ def plot_dollar_distribution(results, m_values, s_values, N, rounds, save_dir):
             if j == 0:
                 ax.set_ylabel("Frequency")
    
-    plt.suptitle("WDistribution of terminal wealth")
+    plt.suptitle("Distribution of terminal wealth")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["wealth", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["wealth", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     return path
 
-def plot_success_rate_distribution(results, m_values, s_values, N, rounds, save_dir):
+def plot_success_rate_distribution(results, m_values, s_values, N, rounds, save_dir, payoff_scheme):
     
     fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12,9), sharex=True, sharey=True)
     
@@ -189,14 +197,23 @@ def plot_success_rate_distribution(results, m_values, s_values, N, rounds, save_
    
     plt.suptitle("Distribution of avg success rates by agent")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["avg_success_rates", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["avg_success_rates", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     return path
 
-def plot_success_rates(results, m_values, s_values, N, rounds, lam, savedir, interval_lengths=(50, 100, 250)):
+def plot_success_rates(results,
+                       m_values, 
+                       s_values, 
+                       N,
+                       rounds,
+                       lam,
+                       save_dir,
+                       payoff_scheme,
+                       interval_lengths=(50, 100, 250)
+                       ):
     
     fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12,9), sharex=True, sharey=True)
     for i, m in enumerate(m_values):
@@ -221,14 +238,14 @@ def plot_success_rates(results, m_values, s_values, N, rounds, lam, savedir, int
                 
     plt.suptitle("Mean wins per round (moving averages)")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["mean_wins", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["mean_wins", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
     plt.close()
     return path
      
-def plot_price_graph(results, m_values, s_values, N, rounds, lam, save_dir):
+def plot_price_graph(results, m_values, s_values, N, rounds, lam, save_dir, payoff_scheme):
     os.makedirs(save_dir, exist_ok=True)
     fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12, 9), sharex=True, sharey=True)
     
@@ -247,7 +264,7 @@ def plot_price_graph(results, m_values, s_values, N, rounds, lam, save_dir):
    
     plt.suptitle("Price(t)")
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    bits = ["price_time_series", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+    bits = ["price_time_series", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
     filename = "_".join(bits)+".pdf"
     path = os.path.join(save_dir, filename)
     plt.savefig(path, format="pdf", dpi=300)
@@ -255,7 +272,7 @@ def plot_price_graph(results, m_values, s_values, N, rounds, lam, save_dir):
     return path
     
 
-def plot_autocorrelation(results, m_values, s_values, N, rounds, lam, save_dir):
+def plot_autocorrelation(results, m_values, s_values, N, rounds, lam, save_dir, payoff_scheme):
    
    fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12, 9), sharex=True, sharey=True) 
    
@@ -274,20 +291,99 @@ def plot_autocorrelation(results, m_values, s_values, N, rounds, lam, save_dir):
        
    plt.suptitle("Price Autocorrelation")
    plt.tight_layout(rect=[0, 0, 1, 0.96])
-   bits = ["price_autocorrelation", "dollar_game", f"{N}_agents", f"{rounds}_rounds"]
+   bits = ["price_autocorrelation", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
    filename = "_".join(bits) + ".pdf"
    path = os.path.join(save_dir, filename)
    plt.savefig(path, format="pdf", dpi=300)
    plt.close()
    return path
 
+def plot_attendance_distribution(results, m_values, s_values, N, rounds, lam, save_dir, payoff_scheme):
+    
+    fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(9,12), sharex=True, sharey=True)
+    
+    for i, m in enumerate(m_values):
+        for j, s in enumerate(s_values):
+            ax=axes[i,j]
+            ax.hist(results[(m,s)]["actions"], bins=30, alpha=0.8, edgecolor="black")
+            ax.set_title(f"m={m}, s={s}", fontsize=10)
+            ax.grid(True, linestyle="--", alpha=0.6)
+            if i == len(m_values)-1:
+                ax.set_xlabel("Total Action A(t)")
+            if j == 0:
+                ax.set_ylabel("Frequency")
+                
+    plt.suptitle("Attendance Frequency Distribution", fontsize=14)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    bits = ["attendance_frequency",payoff_scheme.__name__, f"{N} agents", f"{rounds}_rounds"]
+    filename = "_".join(bits) + ".pdf"
+    path = os.path.join(save_dir, filename)
+    plt.savefig(path, format="pdf", dpi=300)
+    plt.close()
+    
+    return path
 
-# -----------------------------------------------------------------------------
+
+def plot_correlation_points_wealth(results, m_values, s_values, N, rounds, lam, save_dir, payoff_scheme):
+   
+   fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12, 9), sharex=True, sharey=True) 
+   
+   for i, m in enumerate(m_values):
+       for j, s in enumerate(s_values):
+           w = np.array(results[(m, s)]["dollars"])
+           p = np.array(results[(m, s)]["points"])
+           ax=axes[i,j]
+           ac1 = float(np.corrcoef(p, w)[0, 1])
+           ax.scatter(p, w, s=6, alpha=0.6)
+           ax.set_title(f"m={m}, s={s} p(t) vs w(t); ρ₁ = {ac1:.3f}")
+           ax.grid(True, linestyle="--", alpha=0.6)
+           if i == len(m_values)-1:
+               ax.set_xlabel("p(t)")
+           if j == 0:
+               ax.set_ylabel("p(t+1)")
+       
+   plt.suptitle("Points vs Wealth")
+   plt.tight_layout(rect=[0, 0, 1, 0.96])
+   bits = ["Points vs wealth correlation", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
+   filename = "_".join(bits) + ".pdf"
+   path = os.path.join(save_dir, filename)
+   plt.savefig(path, format="pdf", dpi=300)
+   plt.close()
+   return path
+
+def plot_risk_return(results, m_values, s_values, N, rounds, lam, save_dir, payoff_scheme):
+    fig, axes = plt.subplots(len(m_values), len(s_values), figsize=(12, 9), sharex=False, sharey=False) 
+    
+    for i, m in enumerate(m_values):
+        for j, s in enumerate(s_values):
+            wlist = results[(m,s)]["wealth_per_round"]
+            pairs= [risk_from_wealth(np.array(w)) for w in wlist]
+            avg_ret, risk = map(np.array, zip(*pairs))
+            ax=axes[i,j]
+            ax.scatter(risk, avg_ret, s=6, alpha=0.6)
+            ax.set_title(f"m={m}, s={s}")
+            ax.grid(True, linestyle="--", alpha=0.6)
+            if i == len(m_values)-1:
+                ax.set_xlabel("Risk")
+            if j == 0:
+                ax.set_ylabel("Return")
+                
+    plt.suptitle("Risk vs Return")
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    bits = ["risk_return", payoff_scheme.__name__, f"{N}_agents", f"{rounds}_rounds"]
+    filename = "_".join(bits) + ".pdf"
+    path = os.path.join(save_dir, filename)
+    plt.savefig(path, format="pdf", dpi=300)
+    plt.close()            
+    return path
+
+
+
 # Core run + analysis
-# -----------------------------------------------------------------------------
+
 def run_dollar_game_grid (
-        m_values: list = [2,5],
-        s_values: list = [2,5],
+        m_values: list = [6, 8, 10],
+        s_values: list = [4, 6, 8],
         N: int = 1000,
         rounds: int = 20000,
         sign: int = +1,
@@ -295,6 +391,8 @@ def run_dollar_game_grid (
         lambda_mode: str = "manual",
         lambda_value: float = 1.0,
         price_noise_std:float = 0.0,
+        market_maker: bool = None,
+        payoff: str = BinaryMGPayoff
     ) -> Dict[str, Any]:
     results = {}
     
@@ -302,26 +400,26 @@ def run_dollar_game_grid (
     Runs a Dollar Game and returns a dict of metrics.
     """
    
-    payoff = DollarGamePayoff(sign=sign)
-    
    
     # ---- Run game ----
     for m in m_values:
         for s in s_values:
-            game = Game(num_players=N, memory=m, num_strategies=s, rounds=rounds, payoff_scheme=payoff, lambda_value=lambda_value)
+            game = Game(num_players=N, memory=m, num_strategies=s,
+                        rounds=rounds, payoff_scheme=payoff(), 
+                        lambda_value=lambda_value,
+                        market_maker=market_maker,
+                        )
             game.run()
             key = (m,s)
             results[key] = {
                 "actions": game.actions,
-                "dollars": [p.dollar for p in game.players],
+                "points": [p.points for p in game.players],
+                "dollars": [p.wealth for p in game.players],
+                "wealth_per_round": [p.wealth_per_round for p in game.players],
                 "average_success_rates_per_round": [np.mean(np.vstack([p.wins_per_round for p in game.players]), axis=0)],
                 "success_rates": [np.mean(p.wins_per_round) for p in game.players]
             }
     return results
-            
-    
-   
-    
     
     """
     
@@ -351,15 +449,17 @@ def run_dollar_game_grid (
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     # Adjust parameters
-    m_values = [4, 6, 8]
-    s_values = [2, 3, 4]
+    m_values = [8, 10]
+    s_values = [4, 6]
     N = 501
-    rounds = 20000
+    rounds = 3000
     sign = +1
     seed = 12345
     lambda_mode = "manual"
-    lambda_value = 10 * N
+    lambda_value = 30 * N
     price_noise_std = 0.0
+    market_maker=True   #True or None
+    payoff=BinaryMGPayoff
     
     
         # --- logger with seed (creates timestamped run dir) ---
@@ -369,7 +469,7 @@ if __name__ == "__main__":
         "m_values": m_values, "s_values": s_values, "N": N, "rounds": rounds,
         "sign": sign, "lambda_mode": lambda_mode,
         "lambda_value": lambda_value, "price_noise_std": price_noise_std,
-        "seed": seed,
+        "seed": seed, "market_maker": market_maker,
         })
     
     out = run_dollar_game_grid(
@@ -379,6 +479,8 @@ if __name__ == "__main__":
         lambda_mode=lambda_mode,
         lambda_value=lambda_value,
         price_noise_std=price_noise_std,
+        market_maker=market_maker,
+        payoff=payoff
     )
     
     run_dir = logger.get_dir()
@@ -387,36 +489,34 @@ if __name__ == "__main__":
     save_dir = os.path.join(run_dir, "artifacts")
     _ensure_dir(save_dir)
     
-    p1 = plot_action_series(out, m_values, s_values, N, rounds, save_dir)
-    p2 = plot_price_graph(out, m_values, s_values, N, rounds, lambda_value, save_dir)
-    p3 = plot_dollar_distribution(out, m_values, s_values, N, rounds, save_dir)
-    p4 = plot_success_rates(out, m_values, s_values, N, rounds, lambda_value, save_dir)
-    p5 = plot_success_rate_distribution(out, m_values, s_values, N, rounds, save_dir)
-    p6 = plot_autocorrelation(out, m_values, s_values, N, rounds, lambda_value, save_dir)
+    p1 = plot_action_series(out, m_values, s_values, N, rounds, save_dir, payoff)
+    p2 = plot_price_graph(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
+    p3 = plot_dollar_distribution(out, m_values, s_values, N, rounds, save_dir, payoff)
+    p4 = plot_success_rates(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
+    p5 = plot_success_rate_distribution(out, m_values, s_values, N, rounds, save_dir, payoff)
+    p6 = plot_autocorrelation(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
+    p7 = plot_correlation_points_wealth(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
+    p8 = plot_attendance_distribution(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
+    p9 = plot_risk_return(out, m_values, s_values, N, rounds, lambda_value, save_dir, payoff)
 
 
-    """    
+   
     # Register metrics
     logger.log_metrics({
-        "varA": varA,
-        "autocorr_lag1_A": ac1,
         "lambda_used": lambda_value,
-        "mean_dollar": float(np.mean(cum_dol)),
-        "std_dollar": float(np.std(cum_dol)),
-        "min_dollar": float(np.min(cum_dol)),
-        "max_dollar": float(np.max(cum_dol)),
+        "market_maker": market_maker,
+        "directory": save_dir,
     })
     
     # Human-readable log
     log_simulation([
         "Module: DollarGame",
-        f"m={m}, s={s}, N={N}, rounds={rounds}, sign={sign:+d}",
-        f"Var(A)={varA:.4g}, rho1(A)={ac1:.3f}, lambda={lam:.4g}, noise_std={price_noise_std}",
-        f"Saved tables: {series_path}, {dollars_path}",
-        f"Artifacts: {p_att}, {p_dol}, {p_price}, {p_ac}",
+        f"m={m_values}, s={s_values}, N={N}, rounds={rounds}, sign={sign:+d}",
+        f"lambda={lambda_value:.4g}, noise_std={price_noise_std}",
+        f"Saved tables: {save_dir}",
+        f"Artifacts: {p1}, {p2}, {p3}, {p4}, {p5}, {p6}, {p7}, {p8}, {p9}",
         f"Run dir: {logger.get_dir()}",
     ])
     
     logger.close()
     
-    """

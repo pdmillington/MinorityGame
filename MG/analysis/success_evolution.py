@@ -16,7 +16,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.game import Game
-from core.player import Player
 from core.game_config import GameConfig
 from utils.logger import log_simulation
 
@@ -75,8 +74,7 @@ def plot_success_evolution(cfg):
     # Success evolution demo run
     long_game = Game(
         population_spec=population_spec,
-        cfg=cfg_game,
-        PlayerClass=Player
+        cfg=cfg_game
     )
 
     results = long_game.run()

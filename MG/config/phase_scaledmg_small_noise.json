@@ -1,0 +1,17 @@
+{
+  "payoff_key": "ScaledMG",
+  "m_values": [3, 4, 5, 6, 7, 8, 9, 10],
+  "num_players": 301,
+  "num_strategies": 2,
+  "position_limit": 0,
+  "noise_players": 700,
+  "noise_allow_no_action": false,
+  "noise_position_limit": 0,
+  "rounds": 1000,
+  "num_games": 10,
+  "market_maker": null,
+  "save_path": "plots/phase/phase_diagram_loglog.pdf",
+  "save_path2": "plots/phase/return_var_loglog.pdf",
+  "save_path3": "plots/phase/return_mean_loglog.pdf",
+  "log_path": "logs/simulation_log.txt"
+}

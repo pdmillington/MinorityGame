@@ -1,0 +1,17 @@
+
+============================================================
+[2025-10-11 10:45:52]
+[20251011_104552] MM Wealth Distribution DollarGamePayoff
+m=5, s=5, alpha=6.40000, mean return=-2.36004
+m=6, s=5, alpha=12.80000, mean return=-0.70222
+m=7, s=5, alpha=25.60000, mean return=0.73314
+m=8, s=5, alpha=51.20000, mean return=0.36943
+m=9, s=5, alpha=102.40000, mean return=0.25028
+m=10, s=5, alpha=204.80000, mean return=0.24321
+Players: 501
+Strategies: 5
+Rounds: 500
+Repetitions: 20
+Plot Saved: plots/mm_risk/avg_return_20251011_104552.pdf
+============================================================
+============================================================

@@ -1,0 +1,23 @@
+{
+  "rounds": 500,
+  "price": 100.0,
+  "lambda_": 0.0000667,
+  "market_maker": null,
+  "record_agent_series": false,
+  "seed": 1234,
+
+  "base_cohorts": [
+    {
+      "memory": 3,
+      "strategies": 3,
+      "payoff": "DollarGame",
+      "count": 1001,
+      "position_limit": 0
+    }
+  ],
+  "vary": "memory_shift",
+  "values": [1, 2, 3, 4, 6, 8, 10, 12, 14],
+  "target_payoff": null,
+  "target_tag": null
+}
+

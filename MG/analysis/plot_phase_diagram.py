@@ -21,7 +21,6 @@ import matplotlib.pyplot as plt
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.game import Game
-from core.player import Player
 from core.game_config import GameConfig
 from utils.logger import log_simulation
 

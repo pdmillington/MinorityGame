@@ -21,8 +21,8 @@ class StatsRecorder:
         self.record_agent_series = record_agent_series
 
         # --- game-level series ---
-        self.A_series = np.zeros(rounds, dtype=np.int64)
-        self.price_series = np.zeros(rounds + 1, dtype=float)  # include initial price at t=0
+        self.attendance = np.zeros(rounds, dtype=np.int64)
+        self.prices = np.zeros(rounds + 1, dtype=float)  # include initial price at t=0
 
         # you can add more global series later: returns, volatility proxies, etc.
 
@@ -50,7 +50,7 @@ class StatsRecorder:
 
     def record_initial_state(self, price, players):
         """Call once at t=0 before the first round."""
-        self.price_series[0] = price
+        self.prices[0] = price
         if self.record_agent_series:
             for i, p in enumerate(players):
                 self.wealth[0, i] = p.wealth
@@ -66,8 +66,8 @@ class StatsRecorder:
         Record after round t has been played and players updated.
         t is 0-based index for rounds (0..rounds-1).
         """
-        self.A_series[t] = A
-        self.price_series[t + 1] = price
+        self.attendance[t] = A
+        self.prices[t + 1] = price
 
         if self.record_agent_series:
             for i, p in enumerate(players):
@@ -102,8 +102,8 @@ class StatsRecorder:
 
         # Return everything bundled in a dict for convenience
         return {
-            "A_series": self.A_series,
-            "price_series": self.price_series,
+            "Attendance": self.attendance,
+            "Prices": self.prices,
             "wealth": self.wealth,
             "position": self.position,
             "wins": self.wins_per_round,

@@ -48,8 +48,8 @@ if __name__ == "__main__":
     memory_range = range(2, 11)
     N = 101
     s = 2
-    rounds = 1000
-    repeats = 20
+    rounds = 5000
+    repeats = 2
 
     # Run both payoff types
     alphas_bin, vols_bin = sweep_alpha_vs_volatility(memory_range, N, s, rounds, repeats, BinaryMGPayoff)
@@ -58,12 +58,12 @@ if __name__ == "__main__":
     baseline = random_baseline_volatility(N, rounds)
 
     plt.figure(figsize=(8, 5))
-    plt.plot(alphas_bin, vols_bin, marker='o', label='Binary Payoff')
-    plt.plot(alphas_scaled, vols_scaled, marker='s', label='Proportional Payoff')
+    plt.loglog(alphas_bin, vols_bin, marker='o', label='Binary Payoff')
+    plt.loglog(alphas_scaled, vols_scaled, marker='s', label='Proportional Payoff')
     plt.axhline(y=baseline, color='gray', linestyle='--', label='Random Baseline (±1)')
     plt.xlabel(r'$\alpha = 2^m / N$')
     plt.ylabel(r'$\sigma^2 / N$')
-    plt.title('Volatility vs. $\alpha$ in the Minority Game')
+    plt.title(r'Volatility vs. $\alpha$ in the Minority Game')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()

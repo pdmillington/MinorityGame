@@ -11,7 +11,7 @@ import math
 from typing import Dict, List, Iterable, Optional, Sequence, Mapping, Any
 
 import numpy as np
-from scipy.stats import skew, kurtosis
+from scipy.stats import skew, kurtosis, pearsonr
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator, ScalarFormatter, AutoMinorLocator
 
@@ -90,16 +90,13 @@ def stat_summary(prices, periods_per_year=252):
 
     return stats
 
-def plot_population_grid(
+def make_population_grid(
         items: List[Sequence[float]],
         plot_fn: str,
         suptitle: str,
-        save_dir: str,
         x_label: str,
         y_label: str,
-        filename_stub: str,
         stat_sum: Optional[bool] = False,
-        filename_prefix: Optional[str] = None,
         items2: Optional[List[Sequence[float]]] = None,
         titles: Optional[List[str]] = None,
         ) -> str:
@@ -107,7 +104,6 @@ def plot_population_grid(
     Plot a list of 1D series in near grid of subplots.
     Each panel shows one series and its title
     """
-    ensure_dir(save_dir)
     
     n = len(items)
 
@@ -118,6 +114,11 @@ def plot_population_grid(
                              sharex=False,
                              sharey=False,
                              squeeze=False)
+    
+    if items2 is not None and len(items2) != n:
+        raise ValueError("items and items2 must have same length")
+    if titles is not None and len(titles) != n:
+        raise ValueError("titles and items must have same length")
     
     for idx, item in enumerate(items):
         r = idx // cols
@@ -145,13 +146,8 @@ def plot_population_grid(
             
     fig.suptitle(suptitle)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    
-    path = plot_file_path(filename_stub=filename_stub,
-                   filename_prefix=filename_prefix,
-                   save_dir=save_dir)
-    fig.savefig(path, format="pdf", dpi=300)
-    plt.close(fig)
-    return path
+
+    return fig
     
 def plot_ms_series_grid(
         series_list: dict[tuple[int, int], Sequence[float]],
@@ -212,6 +208,25 @@ def plot_hist(ax, title, y_data, stat_sum, x_data=None):
     ax.hist(h, bins=30, alpha=0.75, edgecolor='black')
     ax.set_title(title, fontsize=10)
     ax.grid(True, linestyle='--', alpha=0.4)
+    if stat_sum:
+        try:
+            stats_text = (
+                f"μ: {np.mean(h):.2f}\n"
+                f"σ: {np.std(h)*100:.1f}%\n"
+            )
+            ax.text(
+                0.02, 0.98, stats_text,
+                transform=ax.transAxes,
+                fontsize=7,
+                va='top',
+                bbox=dict(boxstyle='round,pad=0.3',
+                         facecolor='white',
+                         edgecolor='gray',
+                         alpha=0.8,
+                         linewidth=0.5)
+            )
+        except Exception:
+            pass
     
 def plot_scatter(ax, title, y_data, stat_sum, x_data=None):
     """
@@ -222,6 +237,34 @@ def plot_scatter(ax, title, y_data, stat_sum, x_data=None):
     ax.scatter(x, y, s=18, marker='o', alpha=0.6, linewidths=0)
     ax.set_title(title, fontsize=10)
     ax.grid(True, linestyle='--', alpha= 0.6)
+    if stat_sum:
+        try:
+            stats = pearsonr(x, y)
+            stats_text = (
+                f"⍴: {stats[0]*100:.2f}%\n"
+            )
+            ax.text(
+                0.02, 0.98, stats_text,
+                transform=ax.transAxes,
+                fontsize=7,
+                va='top',
+                bbox=dict(boxstyle='round,pad=0.3',
+                         facecolor='white',
+                         edgecolor='gray',
+                         alpha=0.8,
+                         linewidth=0.5)
+            )
+        except Exception:
+            pass
+    
+def plot_box(ax, title, y_data, stat_sum, x_data=None):
+    cids = sorted(y_data.keys())
+    data = [y_data[cid] for cid in cids]
+    x_labels = [f"{cid}" for cid in cids]
+    ax.boxplot(data, labels=x_labels)
+    ax.set_title(title, fontsize=10)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    
     
 def plot_price_graph(prices: Sequence[float],
                      title: str,

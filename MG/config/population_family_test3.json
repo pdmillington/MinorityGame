@@ -1,0 +1,66 @@
+{
+  "rounds": 5000,
+  "price": 100.0,
+  "lambda_": 0.0000667,
+  "market_maker": null,
+  "record_agent_series": false,
+  "seed": 1234,
+
+  "base_cohorts": [
+    {
+      "memory": 3,
+      "strategies": 3,
+      "payoff": "ScaledMG",
+      "count": 250,
+      "position_limit": 0
+    },
+    {
+      "memory": 5,
+      "strategies": 4,
+      "payoff": "ScaledMG",
+      "count": 250,
+      "position_limit": 0
+    },
+    {
+      "memory": 7,
+      "strategies": 6,
+      "payoff": "ScaledMG",
+      "count": 250,
+      "position_limit": 0
+    },
+    {
+      "memory": 10,
+      "strategies": 8,
+      "payoff": "ScaledMG",
+      "count": 250,
+      "position_limit": 0
+    },
+    {
+      "memory": 3,
+      "strategies": 4,
+      "payoff": "DollarGame",
+      "count": 250,
+      "position_limit": 0
+    },
+     {
+       "memory": 8,
+       "strategies": 6,
+       "payoff": "DollarGame",
+       "count": 250,
+       "position_limit": 0
+     },
+      {
+        "memory": 10,
+        "strategies": 8,
+        "payoff": "DollarGame",
+        "count": 250,
+        "position_limit": 0
+      }
+  ],
+
+  "vary": "memory_shift",
+  "values": [1, 2, 3, 4, 5, 6],
+  "target_payoff": null,
+  "target_tag": null
+}
+
