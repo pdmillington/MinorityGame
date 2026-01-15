@@ -89,7 +89,7 @@ def risk_from_wealth(wealth):
 
 # Main
 
-def run_population_family(family_cfg, game_cfg, PlayerClass):
+def run_population_family(family_cfg, game_cfg):
     """
     Runs games for various cohorts.  A dictionary captures the output for these 
     games. 

@@ -24,7 +24,7 @@ class StatsRecorder:
         self.attendance = np.zeros(rounds, dtype=np.int64)
         self.prices = np.zeros(rounds + 1, dtype=float)  # include initial price at t=0
 
-        # you can add more global series later: returns, volatility proxies, etc.
+        # add more global series later: returns, volatility proxies, etc.
 
         # --- agent-level per-round series (optional, can be big) ---
         if record_agent_series:
@@ -82,8 +82,14 @@ class StatsRecorder:
 
     def finalize(self, players):
         """Compute final summaries after the last round."""
-        self.final_wealth = self.wealth[-1, :].astype(float)
-        self.final_wins = np.sum(self.wins_per_round, axis=0).astype(np.int32)
+        if self.wealth is not None:
+            self.final_wealth = self.wealth[-1, :].astype(float)
+        else:
+            self.final_wealth = np.array([p.wealth for p in players], dtype=float)
+        if self.wins_per_round is not None:
+            self.final_wins = np.sum(self.wins_per_round, axis=0).astype(np.int32)
+        else:
+            self.final_wins = np.array([p.wins for p in players], dtype=np.int32)
         self.final_points = np.array([p.points for p in players], dtype=float)
         self.final_position = np.array([p.position for p in players], dtype=np.int32)
         self.final_cash = np.array([p.cash for p in players], dtype=float)
@@ -99,6 +105,12 @@ class StatsRecorder:
             valid = (bs[1:, :] >= 0) & (bs[:-1, :] >= 0)
             switches = (diff != 0) & valid
             self.strategy_switches = switches.sum(axis=0).astype(np.int32)
+        else:
+            # Extract directly from players if attribute exists
+            if hasattr(players[0], 'strategy_switches'):
+                self.strategy_switches = np.array([p.strategy_switches for p in players], dtype=np.int32)
+            else:
+                self.strategy_switches = None
 
         # Return everything bundled in a dict for convenience
         return {

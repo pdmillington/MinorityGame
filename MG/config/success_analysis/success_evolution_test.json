@@ -4,7 +4,7 @@
   "num_players": 301,
   "num_strategies": 2,
   "position_limit": 0,
-  "rounds": 1000,
+  "rounds": 10000,
   "intervals": [500, 1000, 2000],
   "market_maker": null,
   "price": 100,

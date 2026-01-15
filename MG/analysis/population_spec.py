@@ -221,7 +221,7 @@ def build_population_spec(pop_cfg: PopulationConfig) -> dict:
             s_values=pop_cfg.s_values,
             position_limit=pop_cfg.position_limit)
 
-    return print("Not possible to construct a population")
+    raise ValueError("Not possible to construct a population")
 
 #TODO: deal with noise cohorts
 def build_population_variant(family_cfg: PopulationFamilyConfig, value)-> dict:
@@ -244,5 +244,5 @@ def build_population_variant(family_cfg: PopulationFamilyConfig, value)-> dict:
                                  target_payoff=target_payoff,
                                  target_share =float(value))
 
-    return print("Not possible to construct a Family of Populations")
+    raise ValueError("Not possible to construct a Family of Populations")
     

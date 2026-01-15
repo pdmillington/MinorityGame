@@ -3,7 +3,9 @@
   "price": 100.0,
   "lambda_": 0.0000667,
   "market_maker": null,
-  "record_agent_series": false,
+  "record_agent_series": true,
+
+
   "seed": 1234,
 
   "base_cohorts": [
@@ -23,7 +25,7 @@
     }
   ],
 
-  "vary": "payoff_share",
+  "vary": "payoff_weights",
   "values": [0.0, 0.25, 0.5, 0.75, 1.0],
   "target_payoff": "DollarGame",
   "target_tag": null
