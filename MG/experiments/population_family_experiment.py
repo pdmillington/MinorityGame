@@ -35,8 +35,9 @@ from typing import Optional, Iterable, Dict, Any, List, Tuple
 def load_config(path:str) -> PopulationFamilyConfig:
     with open(path, "r") as f:
         data = json.load(f)
+        config_data = {k: v for k, v in data.items() if not k.startswith('_')}
 
-    fam_cfg = PopulationFamilyConfig(**data)
+    fam_cfg = PopulationFamilyConfig(**config_data)
     game_cfg = GameConfig(
         rounds=fam_cfg.rounds,
         lambda_=fam_cfg.lambda_,

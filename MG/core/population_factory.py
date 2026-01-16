@@ -29,6 +29,15 @@ class PopulationFactory:
         cohorts = self._cohorts_from_spec(self.spec)
         total = sum(c.count for c in cohorts)
 
+        for c in cohorts:
+            if c.agent_type == "strategic" and c.memory is None:
+                raise ValueError(f"Strategic cohort missing memory: {c}")
+            if c.agent_type == "strategic" and c.payoff is None:
+                raise ValueError(f"Strategic cohort missing payoff: {c}")
+            if c.agent_type == "strategic" and c.strategies is None:
+                raise ValueError(f"Strategic cohort missing strategies: {c}")
+
+
         payoff_map = {"BinaryMG":0,
                       "ScaledMG":1,
                       "SmallMinority":2,
@@ -49,7 +58,7 @@ class PopulationFactory:
                 strategies[i:j]  = 0
                 payoff_code[i:j] = -1
                 cohort_id[i:j]   = c_id
-                position_limit[i:j] = c.position_limit
+                position_limit[i:j] = c.position_limit if c.position_limit is not None else 0
                 i = j
                 
             elif c.agent_type=="strategic":
@@ -58,11 +67,9 @@ class PopulationFactory:
                 strategies[i:j]  = c.strategies
                 payoff_code[i:j] = payoff_map[c.payoff]
                 cohort_id[i:j]   = c_id
-                position_limit[i:j] = c.position_limit
+                position_limit[i:j] = c.position_limit if c.position_limit is not None else 0
                 i = j
-        for c in cohorts:
-            if c.agent_type == "strategic" and c.memory is None:
-                raise ValueError(f"Strategic cohort missing memory: {c}")
+
         return {
             "N": total,
             "memory": memory,
@@ -94,10 +101,10 @@ class PopulationFactory:
             raise ValueError("Absolute cohort counts exceed total.")
         out = [Cohort(
             count=p["count"],
-            memory=p.get("memory"),
+            memory=p.get("memory", 1 if p.get("agent_type") == "noise" else None),
             payoff=p.get("payoff"),
             strategies=p.get("strategies"),
-            position_limit=p.get("position_limit"),
+            position_limit=p.get("position_limit", 0),
             agent_type=p.get("agent_type", "strategic"),
             allow_no_action=p.get("allow_no_action", False),
             )
@@ -111,10 +118,10 @@ class PopulationFactory:
             base[order[:leftover]] += 1
             out += [Cohort(
                 count=int(c),
-                memory=p.get("memory"),
+                memory=p.get("memory", 1),
                 payoff=p.get("payoff"),
                 strategies=p.get("strategies"),
-                position_limit=p.get("position_limit"),
+                position_limit=p.get("position_limit", 0),
                 agent_type=p.get("agent_type", "strategic"),
                 allow_no_action=p.get("allow_no_action", False))
                     for p, c in zip(props, base) if c>0]
@@ -142,10 +149,10 @@ class PopulationFactory:
         base[order[:leftover]] += 1
         out = [Cohort(
             count=int(c),
-            memory=p.get("memory"),
+            memory=p.get("memory", 1 if p.get("agent_type") == "noise" else None),
             payoff=p.get("payoff"),
             strategies=p.get("strategies"),
-            position_limit=p.get("position_limit"),
+            position_limit=p.get("position_limit", 0),
             agent_type=p.get("agent_type", "strategic"),
             allow_no_action=p.get("allow_no_action", False))
                for p, c in zip(combos, base) if c>0]

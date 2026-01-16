@@ -43,7 +43,8 @@ class PhaseDiagramConfig:
 def load_config(path: str) -> PhaseDiagramConfig:
     with open(path, "r") as f:
         data =json.load(f)
-    return PhaseDiagramConfig(**data)
+        config_data = {k: v for k, v in data.items() if not k.startswith('_')}
+    return PhaseDiagramConfig(**config_data)
 
 
 def simulate_single_game(args):

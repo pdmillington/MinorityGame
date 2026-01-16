@@ -157,6 +157,7 @@ class TestStatsRecorderRecordRound:
             # Update player values
             for p in players:
                 p.wealth += 1.0
+                p.strategy = 0
             recorder.record_round(t, price=100.0 + t, A=t, players=players)
         
         assert len(recorder.attendance) == 5
@@ -181,6 +182,7 @@ class TestStatsRecorderFinalize:
             p.points = float(i * 5)
             p.position = i - 2
             p.cash = 50.0
+            p.strategy = 0
             p.strategy_switches = i
         
         recorder = StatsRecorder(N=5, rounds=3, k_max=2, record_agent_series=True)
@@ -251,7 +253,12 @@ class TestStatsRecorderFinalize:
         recorder = StatsRecorder(N=3, rounds=5, k_max=2, record_agent_series=True)
         recorder.record_initial_state(price=100.0, players=players)
         
+        history = [1, -1, 1]
+        
+    
         for t in range(5):
+            for p in players:
+                p.choose_action(history)
             recorder.record_round(t, price=100.0, A=0, players=players)
         
         results = recorder.finalize(players)
@@ -277,8 +284,15 @@ class TestStatsRecorderStrategywitches:
             for _ in range(3)
         ]
         
+        history = [-1, 1, -1]
+        
+        for p in players:
+            p.choose_action(history)
+        
         recorder = StatsRecorder(N=3, rounds=5, k_max=3, record_agent_series=True)
         recorder.record_initial_state(price=100.0, players=players)
+        
+        history = [-1, 1, -1]
         
         # Manually set strategy sequence for player 0
         # t=0: strategy 0
@@ -339,6 +353,11 @@ class TestStatsRecorderEdgeCases:
         players = [
             StrategicAgent(memory=3, num_strategies=2, payoff=PAYOFF_REGISTRY["BinaryMG"])
         ]
+        
+        history = [-1, 1, -1]
+        
+        for p in players:
+            p.choose_action(history)
         
         recorder = StatsRecorder(N=1, rounds=5, k_max=2, record_agent_series=True)
         recorder.record_initial_state(price=100.0, players=players)

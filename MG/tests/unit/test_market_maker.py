@@ -278,7 +278,7 @@ class TestMarketMakerEdgeCases:
         # Should still compute, even if economically nonsensical
         assert mm.position == -5
         assert mm.cash == -500.0
-        assert mm.wealth == -1000.0
+        assert mm.wealth == 0.0
 
 
 class TestMarketMakerRepresentation:

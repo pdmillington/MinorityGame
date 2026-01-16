@@ -148,7 +148,7 @@ class Game:
 
         # Random tie break if aggregate flow is zero
         if self.A == 0:
-            self.A = np.random.choice([-1,+1])
+            self.A = self.rng.choice([-1,+1])
 
         # Price impact
         mm_position = self.mm.position if self.mm else 0

@@ -39,7 +39,8 @@ class SuccessEvolutionConfig:
 def load_config(path: str) -> SuccessEvolutionConfig:
     with open(path, 'r') as f:
         data = json.load(f)
-    return SuccessEvolutionConfig(**data)
+        config_data = {k: v for k, v in data.items() if not k.startswith('_')}
+    return SuccessEvolutionConfig(**config_data)
 
 def plot_success_evolution(cfg):
     """

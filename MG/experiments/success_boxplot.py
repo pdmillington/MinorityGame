@@ -33,11 +33,12 @@ from utils.logger import log_simulation, RunLogger, _ts
 def load_config(path: str) -> PopulationConfig:
     with open(path, "r") as f:
         data =json.load(f)
+        config_data = {k: v for k, v in data.items() if not k.startswith('_')}
 
-    cohort_dicts = data.get("cohorts") or []
+    cohort_dicts = config_data.get("cohorts") or []
     cohorts = [CohortConfig(**c) for c in cohort_dicts]
-    data["cohorts"] = cohorts
-    return PopulationConfig(**data)
+    config_data["cohorts"] = cohorts
+    return PopulationConfig(**config_data)
 
 def plot_switch_vs_points_corr():
     pass
