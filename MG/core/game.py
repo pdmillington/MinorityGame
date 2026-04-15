@@ -30,6 +30,11 @@ class Game:
         - update global states (history, price)
         - coordinate agent and MM updates
         - record statistics
+    Virtual strategy scoring uses standard annealed approximation:
+        each virtual strategy is scored against actual aggregate flow
+        ignoring the correction that would happen if the agent played the virtual
+        strategy instead.  The correction is negligible for large N, but grows
+        in importance near the phase change.
 
     Parameters
     ----------
@@ -48,7 +53,8 @@ class Game:
     def __init__(self,
                  population_spec: Dict[str, Any],
                  cfg: GameConfig,
-                 agent_class_map: Optional[Dict[str, type]] = None):
+                 agent_class_map: Optional[Dict[str, type]] = None,
+                 activation_schedule: Dict[int, List[int]] = None):
         """
         Initialize game with population and configuration
         """
@@ -69,11 +75,17 @@ class Game:
             per_player_seeds=False,
             master_seed=cfg.seed
             )
+        
+        # Apply activation schedule if it has been passed
+        if activation_schedule:
+            self._apply_activation_schedule(activation_schedule)
+            
         # Game state
         self.n = len(self.players)
         self.rounds = cfg.rounds
-        self.lambda_value = cfg.lambda_ or (30 * self.n)
+        self.lambda_value = cfg.lambda_ or (1 / (50 * self.n))
         self.price = self.cfg.price
+        self.current_round = 0
         # History
         self.max_memory = max(p.memory for p in self.players)
         self.history=list(self.rng.choice([-1, +1], size=self.max_memory))
@@ -89,6 +101,7 @@ class Game:
             rounds = self.rounds,
             k_max = k_max,
             record_agent_series=cfg.record_agent_series,
+            record_strategies=cfg.record_strategies,
             )
         
         # Store results
@@ -123,6 +136,23 @@ class Game:
             p.wealth = p.cash
             p.points = 0
             p.wins = 0
+            
+    def _apply_activation_schedule(self, schedule: Dict[int, List[int]]) -> None:
+        """
+        Assign active from values to agent by cohort index
+        schedule = {cohort_index: [active_from, active_from ...]}
+        """
+        for cohort_idx, activation_list in schedule.items():
+            cohort_agents = [p for p in self.players
+                             if p.cohort_id==cohort_idx]
+            if len(cohort_agents) != len(activation_list):
+                raise ValueError(
+                    f"Cohort {cohort_idx}:"
+                    f"{len(activation_list)} activation values "
+                    f"for {len(cohort_agents)} agents"
+                    )
+            for agent, active_from in zip(cohort_agents, activation_list):
+                agent.active_from = active_from
 
     def _clip_or_nan(self, x:float) -> float:
         """Ensures that prices do not blow up in large numbers of rounds"""
@@ -142,14 +172,17 @@ class Game:
         5. Update all agents
         6. Update global history
         """
-        # step 1 and step 2
-        actions = [p.choose_action(self.history) for p in self.players]
+        # Update current round counter
+        self.current_round += 1
+        
+        # step 1 and step 2        
+        actions = [p.choose_action(self.history, self.current_round) for p in self.players]
         self.A = sum(actions)          # order flow A_t
 
         # Random tie break if aggregate flow is zero
         if self.A == 0:
             self.A = self.rng.choice([-1,+1])
-
+        
         # Price impact
         mm_position = self.mm.position if self.mm else 0
         r_t =  self.A * self.lambda_value - mm_position * (self.lambda_value)

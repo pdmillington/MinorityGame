@@ -48,6 +48,7 @@ def build_players(population_spec,
                 num_strategies = c.strategies,
                 payoff = payoff_obj,
                 position_limit = plim,
+                score_lambda = getattr(c, 'score_lambda', 0.0)
             )
         elif agent_type == "noise":
             base_kwargs = dict(

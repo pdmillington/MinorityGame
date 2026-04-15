@@ -48,7 +48,7 @@ class NoisePlayer(BaseAgent):
 
         self._action: Optional[int] = None
 
-    def choose_action(self, history: List[int]) -> int:
+    def choose_action(self, history: List[int], current_round: int) -> int:
         """
         Choose action randomly.
         history is ignored by the Noise Trader

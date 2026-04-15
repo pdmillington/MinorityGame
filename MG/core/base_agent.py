@@ -24,7 +24,7 @@ class BaseAgent(ABC):
     - position, cash, wealth
     - position_limit enforcement
     """
-    
+
     def __init__(self,
                  position_limit: Optional[int] = None,
                  initial_cash: float = 0.0,
@@ -46,46 +46,46 @@ class BaseAgent(ABC):
         """
         # Standardize position limit handling
         self.position_limit = int(position_limit) if position_limit not in (None, 0) else None
-        
+
         # Financial state
         self.cash = float(initial_cash)
         self.position = 0
         self.wealth = float(initial_cash)
-        
+
         # RNG
         self.rng = rng if rng is not None else (
-            np.random.default_rng(seed) if seed is not None else 
+            np.random.default_rng(seed) if seed is not None else
             np.random.default_rng())
-        
+
         # Tracking
         self.cohort_id: Optional[int] = None
-        
+
     @abstractmethod
-    def choose_action(self, history: List[int]) -> int:
+    def choose_action(self, history: List[int], current_round) -> int:
         """
         Choose action based on game history.
-        
+
         Parameters
         ----------
         history : List[int]
             Game history (last bits for strategic agents)
-            
+
         Returns
         -------
         int
             Action in {-1, 0, +1}
         """
         pass
-    
+
     @abstractmethod
-    def update(self, 
+    def update(self,
                N: int,
-               flow: int, 
+               flow: int,
                price: float,
                lambda_value: float) -> None:
         """
         Update agent state after round completion.
-        
+
         Parameters
         ----------
         N : int
@@ -98,13 +98,13 @@ class BaseAgent(ABC):
             Market impact parameter
         """
         pass
-    
+
     def _apply_trade(self, action: int, price: float) -> None:
         """
         Execute trade and update position/cash/wealth.
-        
+
         This is the single source of truth for position changes.
-        
+
         Parameters
         ----------
         action : int
@@ -115,29 +115,33 @@ class BaseAgent(ABC):
         self.position += action
         self.cash -= action * price
         self.wealth = self.position * price + self.cash
-    
-    def _enforce_position_limit(self, desired_action: int) -> int:
+
+    def _enforce_action(self, desired_action: int, current_round) -> int:
         """
-        Enforce position limit by clipping action if necessary.
-        
+        Enforce action due to position limit by clipping action if necessary
+        and for dormant agents.
+
         Parameters
         ----------
         desired_action : int
             Desired action before limit check
-            
+
         Returns
         -------
         int
             Feasible action (possibly clipped to 0)
         """
+        if current_round < getattr(self, 'active_from', 0):
+            return 0
+
         if self.position_limit is None:
             return desired_action
-        
+
         if abs(self.position + desired_action) > self.position_limit:
             return 0
-        
+
         return desired_action
-    
+
     @property
     def agent_type(self) -> str:
         """Return agent type for identification."""
@@ -147,21 +151,23 @@ class BaseAgent(ABC):
 class StrategicAgent(BaseAgent):
     """
     Base class for strategic agents (MG, DG, etc.) with strategy banks.
-    
+
     Adds:
     - Strategy management
     - Scoring system
     - Payoff scheme integration
     """
-    
+
     def __init__(self,
                  memory: int,
                  num_strategies: int,
                  payoff: Any,
                  position_limit: Optional[int] = None,
                  initial_cash: float = 0.0,
+                 active_from: int = 0,
                  rng: Optional[np.random.Generator] = None,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None,
+                 score_lambda: float = 0.0):
         """
         Initialize strategic agent.
         
@@ -175,28 +181,30 @@ class StrategicAgent(BaseAgent):
             Payoff scheme object with get_reward() method
         """
         super().__init__(position_limit, initial_cash, rng, seed)
-        
+
         self.memory = memory
         self.num_strategies = num_strategies
         self.payoff = payoff
-        
+        self.score_lambda = score_lambda
+        self.active_from = active_from
+
         # Initialize strategy bank
         self.strategies = self.rng.choice(
             [-1, 1], 
             size=(num_strategies, 2 ** memory))
-        
+
         # Strategy tracking
         self.scores = np.zeros(num_strategies)
         self.points = 0.0
         self.strategy: Optional[int] = None
         self.strategy_switches = 0
         self.wins = 0
-        
+
         # Settlement buffers for delayed payoff
         self._pending: Optional[Dict[str, Any]] = None
         self._prev: Optional[Dict[str, Any]] = None
-    
-    def choose_action(self, history: List[int]) -> int:
+
+    def choose_action(self, history: List[int], current_round:int) -> int:
         """
         Choose action using best-performing strategy.
         
@@ -230,7 +238,9 @@ class StrategicAgent(BaseAgent):
         desired_action = int(self.strategies[chosen_idx, index])
         
         # Enforce position limit
-        action = self._enforce_position_limit(desired_action)
+        action = self._enforce_action(desired_action, current_round)
+        
+        
         
         # Store for settlement
         self._prev = self._pending
@@ -282,7 +292,7 @@ class StrategicAgent(BaseAgent):
         self.points += reward
         
         virt_rewards = self.payoff.get_reward_vector(virt, flow, N, lambda_value)
-        self.scores += virt_rewards
+        self.scores = (1 - self.score_lambda) * self.scores + virt_rewards
         
         self.wins = self.payoff.get_win(a_used, flow)
 

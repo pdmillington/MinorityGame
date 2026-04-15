@@ -108,7 +108,7 @@ class PopulationFactory:
             agent_type=p.get("agent_type", "strategic"),
             allow_no_action=p.get("allow_no_action", False),
             )
-            for p in parts if isinstance(p["count"], int) and p["count"]>0]
+            for p in parts if isinstance(p["count"], int)]
         if props:
             w = np.array([p["count"] for p in props], float); w /= w.sum()
             raw = w * remaining

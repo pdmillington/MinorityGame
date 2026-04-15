@@ -37,3 +37,5 @@ class GameConfig:
     record_every: int = 1              # cohort stats cadence
     panel_size: int = 200
     record_agent_series: bool = True
+    record_strategies: bool = False
+
