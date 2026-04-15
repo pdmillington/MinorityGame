@@ -30,6 +30,7 @@ class CohortConfig:
     position_limit: Optional[int] = None
     agent_type: str = "strategic"
     allow_no_action: bool = False
+    score_lambda: float = 0.0
 
 @dataclass
 class PopulationConfig:
@@ -143,7 +144,12 @@ def vary_payoff_weights(base_cohorts, target_payoff, target_share):
     A_new = rescale_group(A, A_target)
     B_new = rescale_group(B, B_target)
 
-    cohorts = A_new + B_new
+    a_iter = iter(A_new)
+    b_iter = iter(B_new)
+    cohorts = [
+        next(a_iter) if c["payoff"] == target_payoff else next(b_iter)
+        for c in base_cohorts
+    ]
     total = sum([c["count"] for c in cohorts])
 
     return {"total": total, "cohorts": cohorts}
@@ -202,6 +208,7 @@ def build_population_spec(pop_cfg: PopulationConfig) -> dict:
                     "strategies": c.strategies,
                     "position_limit": c.position_limit,
                     "agent_type": c.agent_type,
+                    "score_lambda": c.score_lambda,
                     })
             if c.agent_type == "noise":
                 cohorts.append({
@@ -245,4 +252,3 @@ def build_population_variant(family_cfg: PopulationFamilyConfig, value)-> dict:
                                  target_share =float(value))
 
     raise ValueError("Not possible to construct a Family of Populations")
-    
