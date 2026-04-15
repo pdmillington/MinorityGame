@@ -14,8 +14,7 @@ and success rate distribution.
 
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join
-                                (os.path.dirname(__file__), '..')))  #ensure modules are accessible
+
 import json
 import argparse
 
@@ -27,8 +26,8 @@ from datetime import datetime
 from core.game import Game
 from core.game_config import GameConfig
 from analysis.population_spec import build_population_variant, CohortConfig, PopulationConfig, PopulationFamilyConfig
-from analysis.plot_utils import make_population_grid, plot_series, plot_hist, plot_scatter, plot_box
-from analysis.cohort_utils import group_vector_by_cohort
+from analysis.plot_utils import create_grid_figure, panel_series, panel_histogram, panel_scatter, panel_boxplot
+from analysis.cohort_utils import group_vector_by_cohort, summarize_population, format_population_summary
 from utils.logger import RunLogger, log_simulation  # Moved logging utility to reusable utils
 from typing import Optional, Iterable, Dict, Any, List, Tuple
 
@@ -175,6 +174,8 @@ def build_family_report(fam_cfg: PopulationFamilyConfig,
 
         #Generate metric plots, 1 page per group of plots
         for metric_name, spec in metric_specs.items():
+            if spec.get("requires_agent_series", False) and not game_cfg.record_agent_series:
+                continue
             items = [spec["extract"](res) for _, res in results]
             if spec["extract2"] is not None:
                 items2 = [spec["extract2"](res) for _, res in results]
@@ -189,14 +190,14 @@ def build_family_report(fam_cfg: PopulationFamilyConfig,
 
             titles = [f"Population Family {idx + 1}" for idx, _ in enumerate(results)]
 
-            fig = make_population_grid(
+            fig = create_grid_figure(
                 items=items,
                 items2=items2,
                 plot_fn=spec["plot_fn"],
                 titles=titles,
                 suptitle=suptitle,
-                x_label=spec["x_label"],
-                y_label=spec["y_label"],
+                xlabel=spec["x_label"],
+                ylabel=spec["y_label"],
                 stat_sum=spec["stat_sum"]
                 )
             pdf.savefig(fig)
@@ -222,7 +223,7 @@ def main():
     "Attendance": {
         "extract": lambda res: res["Attendance"],
         "extract2": None,
-        "plot_fn": plot_series,          # your callback
+        "plot_fn": panel_series,          # your callback
         "y_label": "Attendance A_t",
         "x_label": "Round",
         "stat_sum": True,
@@ -230,7 +231,7 @@ def main():
     "Prices": {
         "extract": lambda res: res["Prices"],
         "extract2": None,
-        "plot_fn": plot_series,
+        "plot_fn": panel_series,
         "y_label": "Price",
         "x_label": "Time/Round",
         "stat_sum": True,
@@ -238,7 +239,7 @@ def main():
     "Attendance distribution": {
         "extract": lambda res: res["Attendance"],
         "extract2": None,
-        "plot_fn": plot_hist,          # your callback
+        "plot_fn": panel_histogram,          # your callback
         "y_label": "Frequency",
         "x_label": "Attendance",
         "stat_sum": True,
@@ -246,7 +247,7 @@ def main():
     "Succes rates": {
         "extract": lambda res: res["final_wins"]/game_cfg.rounds,
         "extract2": None,
-        "plot_fn": plot_hist,
+        "plot_fn": panel_histogram,
         "y_label": "Frequency",
         "x_label": "Success Rate",
         "stat_sum": True,
@@ -254,7 +255,7 @@ def main():
     "points": {
         "extract": lambda res: res["final_points"],
         "extract2": None,
-        "plot_fn": plot_hist,
+        "plot_fn": panel_histogram,
         "y_label": "Frequency",
         "x_label": "Points",
         "stat_sum": True,
@@ -262,7 +263,7 @@ def main():
     "Wealth vs wins":{
         "extract": lambda res: res["final_wins"]/game_cfg.rounds,
         "extract2": lambda res: res["final_wealth"],
-        "plot_fn": plot_scatter,
+        "plot_fn": panel_scatter,
         "x_label": "Wealth",
         "y_label": "Win frequency",
         "stat_sum": True,
@@ -270,7 +271,7 @@ def main():
     "Wealth vs Switches":{
         "extract": lambda res: res["strategy_switches"],
         "extract2": lambda res: res["final_wealth"],
-        "plot_fn": plot_scatter,
+        "plot_fn": panel_scatter,
         "y_label": "Num Switches",
         "x_label": "Wealth",
         "stat_sum": True,
@@ -278,7 +279,7 @@ def main():
     "Autocorrelation of returns":{
         "extract": lambda res: returns_from_prices(res["Prices"])[1:],
         "extract2": lambda res: returns_from_prices(res["Prices"])[:-1],
-        "plot_fn": plot_scatter,
+        "plot_fn": panel_scatter,
         "y_label": "r(t+1)",
         "x_label": "r(t)",
         "stat_sum": True,
@@ -286,17 +287,18 @@ def main():
     "Risk Return":{
         "extract": lambda res: [risk_from_wealth(w)[0] for w in res["wealth"].T],
         "extract2": lambda res: [risk_from_wealth(w)[1] for w in res["wealth"].T],
-        "plot_fn": plot_scatter,
+        "plot_fn": panel_scatter,
         "y_label": "return",
         "x_label": "risk",
         "stat_sum": False,
+        "requires_agent_series": True,
         },
     "wealth_by_cohort":{
         "extract": lambda res: group_vector_by_cohort(
             res["final_wealth"], 
             res["cohort_ids"]),
         "extract2": None,
-        "plot_fn": plot_box,
+        "plot_fn": panel_boxplot,
         "y_label": "Wealth",
         "x_label": "Cohort",
         "stat_sum": False,
@@ -306,7 +308,7 @@ def main():
             res["final_wins"]/game_cfg.rounds, 
             res["cohort_ids"]),
         "extract2": None,
-        "plot_fn": plot_box,
+        "plot_fn": panel_boxplot,
         "y_label": "Success Rate",
         "x_label": "Cohort",
         "stat_sum": False,
