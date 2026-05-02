@@ -6,9 +6,10 @@ Created on Mon Nov 17 12:12:48 2025
 @author: petermillington
 """
 import numpy as np
+from typing import Dict, Any
 
 class StatsRecorder:
-    def __init__(self, N, rounds, k_max, record_agent_series=True):
+    def __init__(self, N, rounds, k_max, record_agent_series=True, record_strategies=False):
         """
         N      : number of agents
         rounds : number of rounds in the game
@@ -19,6 +20,7 @@ class StatsRecorder:
         self.rounds = rounds
         self.k_max = k_max
         self.record_agent_series = record_agent_series
+        self.record_strategies = record_strategies
 
         # --- game-level series ---
         self.attendance = np.zeros(rounds, dtype=np.int64)
@@ -80,6 +82,49 @@ class StatsRecorder:
                 # assume Player exposes 'current_strategy_index' for the chosen strategy this round
                 self.best_strategy[t + 1, i] = p.strategy
 
+    def _extract_strategies(self, players) -> Dict[str, Any]:
+        """
+        Extract strategy data from players at end of game.
+        
+        Returns dict with:
+        - strategies: array of strategy tables
+        - best_strategy_ids: which strategy each agent used
+        - memory: int, memory parameter m
+        """
+        # Determine memory size from first strategic agent
+        memory = None
+        for p in players:
+            if hasattr(p, 'strategies') and hasattr(p, 'memory'):
+                memory = p.memory
+                break
+        
+        if memory is None:
+            # No strategic agents, return empty
+            return {
+                "strategies": None,
+                "best_strategy_ids": None,
+                "memory": None
+            }
+        memory_size = 2 ** memory
+        
+        # Allocate arrays
+        strategies = np.zeros((self.N, memory_size), dtype=np.int8)  # ±1 fits in int8
+        best_ids = np.zeros(self.N, dtype=np.int16)
+        
+        # Extract best strategy for each agent
+        for i, p in enumerate(players):
+            if hasattr(p, 'strategies') and hasattr(p, 'strategy'):
+                # Get the best strategy
+                best_idx = p.strategy if p.strategy is not None else 0
+                strategies[i, :] = p.strategies[best_idx, :]
+                best_ids[i] = best_idx
+        
+        return {
+            "strategies": strategies,  # Shape: (N, 2^m)
+            "best_strategy_ids": best_ids,
+            "memory": memory
+        }
+
     def finalize(self, players):
         """Compute final summaries after the last round."""
         if self.wealth is not None:
@@ -111,6 +156,15 @@ class StatsRecorder:
                 self.strategy_switches = np.array([p.strategy_switches for p in players], dtype=np.int32)
             else:
                 self.strategy_switches = None
+                
+        if self.record_strategies:
+            extracted = self._extract_strategies(players)
+        else:
+            extracted = {
+                "strategies": None,
+                "best_strategy_ids": None,
+                "memory": None
+                }
 
         # Return everything bundled in a dict for convenience
         return {
@@ -124,4 +178,8 @@ class StatsRecorder:
             "final_wins": self.final_wins,
             "final_points": self.final_points,
             "strategy_switches": self.strategy_switches,
+            "strategies": extracted["strategies"],
+            "best_strategy_ids": extracted["best_strategy_ids"],
+            "memory": extracted['memory']
         }
+
