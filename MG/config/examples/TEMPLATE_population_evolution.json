@@ -1,0 +1,33 @@
+{
+    "_description": "Population Evolution Experiment introduces m=4 agents into m=3 baseline",
+    "_modes": "sudden | gradual | quantum",
+
+    "burn_in":          10000,
+    "total_rounds":     40000,
+
+    "base_m":           3,
+    "base_s":           2,
+    "base_n":           301,
+    "payoff":           "ScaledMG",
+
+    "_proportion_note": "percentage of base_n to introduce as new agents",
+    "proportion_new":   10,
+
+    "mode":             "sudden",
+
+    "_gradual_note":    "used only when mode=gradual: number of rounds over which agents are introduced",
+    "gradual_window":   2000,
+
+    "_quantum_note":    "used only when mode=quantum: proportion_new% introduced every quantum_interval rounds, quantum_number times",
+    "quantum_interval": 1000,
+    "quantum_number":   5,
+
+    "roll_window":      2000,
+    "step":             100,
+
+    "lambda_":          0.000066,
+    "market_maker":     true,
+    "price":            100.0,
+    "record_agent_series": true,
+    "seed":             1235
+}

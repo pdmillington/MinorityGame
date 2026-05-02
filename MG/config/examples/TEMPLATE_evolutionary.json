@@ -1,0 +1,58 @@
+{
+  "_description": "Template for evolutionary game experiments",
+  "_usage": "Copy this file, rename it, and adjust parameters",
+  "_example": "cp TEMPLATE_evolutionary.json my_evolutionary_experiment.json",
+
+  "_notes": [
+    "population_spec supports mixed payoff cohorts — each cohort can have",
+    "a different payoff (BinaryMG, ScaledMG, DollarGame) and score_lambda.",
+    "Payoff type is never changed by evolution — only strategies are replaced.",
+    "Price and market history persist continuously across generations.",
+    "poverty_percentile and replacement_rate together control evolutionary speed:",
+    "  - high percentile + high rate: aggressive, fast evolution",
+    "  - low percentile + low rate: gradual, realistic market turnover",
+    "reset_wealth=true mimics bankruptcy; false mimics strategy replacement only."
+  ],
+
+  "population_spec": {
+    "total": 301,
+    "cohorts": [
+      {
+        "count": 201,
+        "agent_type": "strategic",
+        "memory": 5,
+        "payoff": "BinaryMG",
+        "strategies": 2,
+        "position_limit": null,
+        "score_lambda": 0.0
+      },
+      {
+        "count": 100,
+        "agent_type": "strategic",
+        "memory": 5,
+        "payoff": "DollarGame",
+        "strategies": 2,
+        "position_limit": 1,
+        "score_lambda": 0.0
+      }
+    ]
+  },
+
+  "rounds_per_generation": 5000,
+  "num_generations": 20,
+  "num_runs": 10,
+
+  "poverty_percentile": 0.20,
+  "replacement_rate": 0.50,
+  "reset_wealth": false,
+
+  "lambda_": null,
+  "market_maker": null,
+  "seed": 42,
+  "price": 100.0,
+
+  "record_agent_series": false,
+
+  "save_dir": "plots/evolutionary",
+  "log_path": "logs/simulation_log.txt"
+}

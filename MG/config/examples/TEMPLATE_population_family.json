@@ -12,9 +12,51 @@
 
   "base_cohorts": [
     {
-      "memory": 5,
+      "memory": 4,
       "strategies": 3,
       "payoff": "ScaledMG",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 7,
+      "strategies": 3,
+      "payoff": "ScaledMG",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 9,
+      "strategies": 3,
+      "payoff": "ScaledMG",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 12,
+      "strategies": 3,
+      "payoff": "ScaledMG",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 4,
+      "strategies": 3,
+      "payoff": "DollarGame",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 5,
+      "strategies": 3,
+      "payoff": "DollarGame",
+      "count": 500,
+      "position_limit": 0
+    },
+    {
+      "memory": 6,
+      "strategies": 3,
+      "payoff": "DollarGame",
       "count": 500,
       "position_limit": 0
     },
