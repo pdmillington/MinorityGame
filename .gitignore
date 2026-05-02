@@ -17,3 +17,20 @@ __pycache__/
 
 # OS
 .DS_Store
+results/
+MG/config/phase_diagrams/
+MG/config/evolutionary/
+MG/config/behavioural_characterization/
+MG/config/population_evolution/
+*.png
+minoritygame.ipynb
+MG/config/phase_diagrams/
+MG/config/population_families
+MG/config/success_analysis/
+strategy_space_analysis.pdf
+.ipynb_checkpoints
+MG/plotting.ipynb
+MG/plotting.ipynb
+MG/testing.ipynb
+ParallelMG-vectorised.ipynb
+ParallelMG.ipynb
