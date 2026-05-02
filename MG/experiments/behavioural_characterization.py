@@ -240,20 +240,37 @@ def attendance_statistics(attendance: np.ndarray, N: int, memory: int) -> Dict:
 
 def price_statistics(prices: np.ndarray) -> Dict:
     """
-    Stationarity tests on the log price series.
+    Stationarity tests and stylised-fact statistics on the price series.
 
     ADF  : null = unit root (non-stationary). p ~ 0 -> stationary.
     KPSS : null = stationary. p > 0.05 -> consistent with stationarity.
 
-    For MG we expect log price to be a random walk (non-stationary):
-        ADF fails to reject (p large), KPSS rejects (p small).
-    For DG the series is degenerate so tests are undefined.
+    Stylised facts computed on log returns r_t = log(P_t) - log(P_{t-1}):
+      - ret_AC1       : AC(1) of returns        (should be ~0 for realistic series)
+      - ret_kurt      : excess kurtosis of returns (should be >0, fat tails)
+      - vol_AC1       : AC(1) of squared returns  (should be >0, vol clustering)
     """
     valid = prices[np.isfinite(prices) & (prices > 0)]
     if len(valid) < 20:
-        return {"ADF_p_price": np.nan, "KPSS_p_price": np.nan}
+        return {
+            "ADF_p_price":  np.nan,
+            "KPSS_p_price": np.nan,
+            "ret_AC1":      np.nan,
+            "ret_kurt":     np.nan,
+            "vol_AC1":      np.nan,
+        }
 
     log_p = np.log(valid)
+    returns = np.diff(log_p)           # r_t = log(P_t) - log(P_{t-1})
+    sq_returns = returns ** 2          # for volatility clustering
+
+    def _ac1(series):
+        if len(series) < 3:
+            return np.nan
+        x, y = series[:-1], series[1:]
+        if np.std(x) < 1e-10 or np.std(y) < 1e-10:
+            return np.nan
+        return float(np.corrcoef(x, y)[0, 1])
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -267,8 +284,13 @@ def price_statistics(prices: np.ndarray) -> Dict:
         except Exception:
             kpss_p = np.nan
 
-    return {"ADF_p_price": float(adf_p), "KPSS_p_price": float(kpss_p)}
-
+    return {
+        "ADF_p_price":  float(adf_p),
+        "KPSS_p_price": float(kpss_p),
+        "ret_AC1":      _ac1(returns),
+        "ret_kurt":     float(scipy_stats.kurtosis(returns)),
+        "vol_AC1":      _ac1(sq_returns),
+    }
 # Price return signal construction
 def build_price_return_signals(
     prices:  np.ndarray,
@@ -998,7 +1020,7 @@ def plot_results(
                 box_data.append(rhos)
                 box_labels.append(plabel)
                 box_colours.append(COLOURS_PURE.get(plabel, "#333333"))
-            bp = ax.boxplot(box_data, labels=box_labels, patch_artist=True,
+            bp = ax.boxplot(box_data, tick_labels=box_labels, patch_artist=True,
                             medianprops=dict(color="black", lw=1.5),
                             whiskerprops=dict(lw=0.8),
                             flierprops=dict(marker=".", markersize=2, alpha=0.4))
@@ -1364,7 +1386,8 @@ def plot_results(
                 )
 
                 # Legend only on first panel
-                if col_pos == 0:
+                handles, lbls = ax.get_legend_handles_labels()
+                if handles and col_pos == 0:
                     ax.legend(fontsize=7, loc="upper left")
 
             plt.tight_layout()
@@ -1597,12 +1620,22 @@ def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> N
                 for k, v in asdict(cfg).items()]
     df_cfg = pd.DataFrame(cfg_rows)
 
+    # --- Sheet 5: per-run attendance statistics ---
+    attend_rows = []
+    for plabel in labels:
+        for run_idx, s in enumerate(all_results[plabel]["attend_stats"]):
+            row = {"label": plabel, "run": run_idx}
+            row.update(s)
+            attend_rows.append(row)
+    df_attend = pd.DataFrame(attend_rows)
+
     # --- Write ---
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         df_summary.to_excel(writer, sheet_name="summary",  index=False)
         df_ind.to_excel(    writer, sheet_name="ind_rho",  index=False)
         df_agg.to_excel(    writer, sheet_name="agg_rho",  index=False)
         df_cfg.to_excel(    writer, sheet_name="config",   index=False)
+        df_attend.to_excel( writer, sheet_name="attend_per_run", index=False)
 
     print(f"  Results saved: {path}")
 
