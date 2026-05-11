@@ -79,12 +79,19 @@ class BehaviouralCharConfig:
     # --- Population (shared) ---
     N:            int = 300
     memory:       int = 4
+    memory_distribution: Dict[str, List[int]] = None
     n_strategies: int = 2
 
     # --- Pure mode ---
     pure_payoffs: List[str] = field(default_factory=lambda: [
         "BinaryMG", "ScaledMG", "DollarGame"
     ])
+    
+    # --- Heterogeneous memory (optional) ---
+    # If set, overrides memory for that cohort in family mode
+    # Falls back to self.memory if not set
+    memory_mg:    int = None
+    memory_dg:    int = None
 
     # --- Family mode ---
     target_payoff:  str        = "DollarGame"
@@ -109,24 +116,52 @@ class BehaviouralCharConfig:
     # --- Output ---
     save_dir: str = "simulation_runs"
 
-    def __post_init__(self):
+    def __post_init__(self): 
+        if self.memory_distribution:
+            all_mem = [m for mems in self.memory_distribution.values()
+                       for m in mems]
+            m_max = max(all_mem)
+        else:
+            m_mg = self.memory_mg if self.memory_mg is not None else self.memory
+            m_dg = self.memory_dg if self.memory_dg is not None else self.memory
+            m_max = max(m_mg, m_dg)
         if self.windows is None:
-            m = self.memory
-            self.windows = sorted({1, max(1, m // 2), m, 2 * m})
+            self.windows = sorted({1, max(1, m_max // 2), m_max, 2 * m_max})
         if self.w_paper not in self.windows:
             self.windows = sorted(set(self.windows) | {self.w_paper})
+
+        self._m_rep = round(sum(all_mem) / len(all_mem))  # representative memory for attendance statistics
 
     def base_cohorts(self) -> List[dict]:
         """
         Derive BASE_COHORTS from config.
         Equal split by default — vary_payoff_weights rescales from here.
+        memory_mg / memory_dg override self.memory if set.
         """
+        if hasattr(self, 'memory_distribution') and self.memory_distribution:
+            cohorts = []
+            for payoff, memories in self.memory_distribution.items():
+                n_sub = len(memories)
+                base_share = 0.5
+                per_mem = int(self.N * base_share / n_sub)
+                for m in memories:
+                    cohorts.append({
+                        "count":        per_mem,
+                        "memory":       m,
+                        "payoff":       payoff,
+                        "strategies":   self.n_strategies,
+                        "position_limit": 0,
+                        "agent_type":   "strategic",
+                        })
+            return cohorts
         half = self.N // 2
         remainder = self.N - 2 * half
+        m_mg = self.memory_mg if self.memory_mg is not None else self.memory
+        m_dg = self.memory_dg if self.memory_dg is not None else self.memory
         return [
             {
                 "count":          half + remainder,  # non-target gets any odd agent
-                "memory":         self.memory,
+                "memory":         m_mg,
                 "payoff":         self.non_target_payoff,
                 "strategies":     self.n_strategies,
                 "position_limit": 0,
@@ -134,7 +169,7 @@ class BehaviouralCharConfig:
             },
             {
                 "count":          half,
-                "memory":         self.memory,
+                "memory":         m_dg,
                 "payoff":         self.target_payoff,
                 "strategies":     self.n_strategies,
                 "position_limit": 0,
@@ -152,7 +187,16 @@ class BehaviouralCharConfig:
     def label(self) -> str:
         if self.mode == "pure":
             return f"pure_N{self.N}_m{self.memory}_runs{self.n_runs}"
-        return (f"family_N{self.N}_m{self.memory}"
+        if hasattr(self, 'memory_distribution') and self.memory_distribution:
+            mg_mems = self.memory_distribution.get(self.non_target_payoff, [])
+            dg_mems = self.memory_distribution.get(self.target_payoff, [])
+            mg_str  = "".join(str(m) for m in mg_mems)
+            dg_str  = "".join(str(m) for m in dg_mems)
+            return (f"family_N{self.N}_mg{mg_str}_dg{dg_str}"
+                    f"_shares{len(self.dg_shares)}_runs{self.n_runs}")
+        m_mg = self.memory_mg if self.memory_mg is not None else self.memory
+        m_dg = self.memory_dg if self.memory_dg is not None else self.memory
+        return (f"family_N{self.N}_mg{m_mg}_dg{m_dg}"
                 f"_shares{len(self.dg_shares)}_runs{self.n_runs}")
 
 # Config loader
@@ -506,7 +550,8 @@ def _attend_mean(att_stats: List[Dict], memory: int) -> Dict:
     """Average attendance statistics across runs."""
     keys = ["mean_A", "sigma_A", "sigma2_N", "AC(1)",
             f"AC({memory})", "skew", "ex_kurt", "phase_ratio",
-            "ADF_p", "KPSS_p", "ADF_p_price", "KPSS_p_price" ]
+            "ADF_p", "KPSS_p", "ADF_p_price", "KPSS_p_price",
+            "ret_AC1", "ret_kurt", "vol_AC1"]
     out = {}
     for k in keys:
         vals = [s[k] for s in att_stats if k in s and not np.isnan(s.get(k, np.nan))]
@@ -1546,18 +1591,15 @@ def save_paper_figures(
 
 def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> None:
     """
-    Save all results to a single Excel workbook with four sheets:
-      - summary        : one row per variant (attendance stats + rho at w_paper)
-      - ind_rho        : all individual correlations stacked (label column added)
-      - agg_rho        : all aggregate correlations stacked (label column added)
-      - config         : experiment configuration key-value pairs
+    Save results:
+      - Excel : summary + config (small, human-readable)
+      - Parquet: ind_rho, agg_rho, attend_per_run (large, fast to read)
     """
     os.makedirs(save_dir, exist_ok=True)
-    path = os.path.join(save_dir, f"results_{cfg.label}.xlsx")
-
+    stem   = os.path.join(save_dir, f"results_{cfg.label}")
     labels = [k for k in all_results if not k.startswith("_")]
 
-    # --- Sheet 1: summary ---
+    # --- Summary ---
     summary_rows = []
     for plabel in labels:
         data        = all_results[plabel]
@@ -1595,10 +1637,13 @@ def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> N
             "p_MG":        p_mg,
             "ADF_p":       ms.get("ADF_p"),
             "KPSS_p":      ms.get("KPSS_p"),
+            "ret_AC1":     ms.get("ret_AC1"),
+            "ret_kurt":    ms.get("ret_kurt"),
+            "vol_AC1":     ms.get("vol_AC1"),
         })
     df_summary = pd.DataFrame(summary_rows)
 
-    # --- Sheet 2: ind_rho (stacked) ---
+    # --- ind_rho ---
     ind_frames = []
     for plabel in labels:
         df = all_results[plabel]["ind_df"].copy()
@@ -1606,7 +1651,7 @@ def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> N
         ind_frames.append(df)
     df_ind = pd.concat(ind_frames, ignore_index=True)
 
-    # --- Sheet 3: agg_rho (stacked) ---
+    # --- agg_rho ---
     agg_frames = []
     for plabel in labels:
         df = all_results[plabel]["agg_df"].copy()
@@ -1614,13 +1659,7 @@ def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> N
         agg_frames.append(df)
     df_agg = pd.concat(agg_frames, ignore_index=True)
 
-    # --- Sheet 4: config ---
-    from dataclasses import asdict
-    cfg_rows = [{"parameter": k, "value": str(v)}
-                for k, v in asdict(cfg).items()]
-    df_cfg = pd.DataFrame(cfg_rows)
-
-    # --- Sheet 5: per-run attendance statistics ---
+    # --- attend_per_run ---
     attend_rows = []
     for plabel in labels:
         for run_idx, s in enumerate(all_results[plabel]["attend_stats"]):
@@ -1629,15 +1668,24 @@ def save_data(all_results: Dict, cfg: BehaviouralCharConfig, save_dir: str) -> N
             attend_rows.append(row)
     df_attend = pd.DataFrame(attend_rows)
 
-    # --- Write ---
-    with pd.ExcelWriter(path, engine="openpyxl") as writer:
-        df_summary.to_excel(writer, sheet_name="summary",  index=False)
-        df_ind.to_excel(    writer, sheet_name="ind_rho",  index=False)
-        df_agg.to_excel(    writer, sheet_name="agg_rho",  index=False)
-        df_cfg.to_excel(    writer, sheet_name="config",   index=False)
-        df_attend.to_excel( writer, sheet_name="attend_per_run", index=False)
+    # --- config ---
+    from dataclasses import asdict
+    cfg_rows = [{"parameter": k, "value": str(v)}
+                for k, v in asdict(cfg).items()]
+    df_cfg = pd.DataFrame(cfg_rows)
 
-    print(f"  Results saved: {path}")
+    # --- Excel: summary + config only ---
+    xlsx_path = f"{stem}.xlsx"
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+        df_summary.to_excel(writer, sheet_name="summary", index=False)
+        df_cfg.to_excel(    writer, sheet_name="config",  index=False)
+    print(f"  Excel saved:   {xlsx_path}")
+
+    # --- Parquet: large sheets ---
+    df_ind.to_parquet(   f"{stem}_ind_rho.parquet",        index=False)
+    df_agg.to_parquet(   f"{stem}_agg_rho.parquet",        index=False)
+    df_attend.to_parquet(f"{stem}_attend_per_run.parquet", index=False)
+    print(f"  Parquet saved: {stem}_*.parquet")
 
 def _run_single_game(args):
     """One game, one run. Must be module-level for pickling."""
@@ -1733,11 +1781,14 @@ def run_pure_experiment_parallel(cfg: BehaviouralCharConfig) -> Dict:
 
 def run_family_experiment_parallel(cfg: BehaviouralCharConfig,
                                    family_cfg: PopulationFamilyConfig) -> Dict:
-    memory = cfg.memory
     windows = cfg.windows
     n_runs = cfg.n_runs
     seed = cfg.seed
     max_workers = cfg.max_workers
+    
+    m_mg  = cfg.memory_mg if cfg.memory_mg is not None else cfg._m_rep
+    m_dg  = cfg.memory_dg if cfg.memory_dg is not None else cfg._m_rep
+    m_rep = max(m_mg, m_dg)   # representative memory for attendance_statistics
     
     # Build all (label, pop_spec) pairs
     variants = []
@@ -1748,7 +1799,7 @@ def run_family_experiment_parallel(cfg: BehaviouralCharConfig,
 
     # Build full task list — one task per (variant, run)
     tasks = [
-        (label, pop_spec, n_agents, memory,
+        (label, pop_spec, n_agents, m_rep,
          family_cfg.rounds, windows, seed, run_idx, cfg.lambda_)
         for label, pop_spec, n_agents, _ in variants
         for run_idx in range(n_runs)
