@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 import json
 import argparse
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -111,7 +111,7 @@ def simulate_single_game(args):
         lambda_=1/(cfg.num_players * 50),
         mm=None,
         price=100,
-        record_agent_series=True,
+        record_agent_series=False,
         seed=hash((m, game_id)) & 0x7FFFFFFF
         )
 
@@ -382,11 +382,29 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
     info_emh_rejection_rate = []
     info_mean_coverage = []
     
+    m_list = list(cfg.m_values)
+    n_m = len(m_list)
+    
 
     with ProcessPoolExecutor() as executor:
-        for m in cfg.m_values:
-            args_list = [(m, cfg, game_id) for game_id in range(cfg.num_games)]
-            results = list(executor.map(simulate_single_game, args_list))
+        for i_m, m in enumerate(m_list):
+            alpha = 2**m / cfg.num_players
+            print(
+                f"\n[{i_m + 1}/{n_m}]  m={m}  α={alpha:.4f}  "
+                f"({cfg.num_games} games × {cfg.rounds:,} rounds)",
+                flush=True,
+                )
+            fut_map = {
+                executor.submit(simulate_single_game, (m, cfg, game_id)): game_id
+                for game_id in range(cfg.num_games)
+                }
+            
+            results = []
+            
+            for k, fut in enumerate(as_completed(fut_map), start=1):
+                results.append(fut.result())
+                print(f"\r game {k}/{cfg.num_games}", end="", flush=True)
+            print()  
 
             sigmas = np.array([r["sigma2"] for r in results], dtype=float)
             kurt = np.array([r["kurtosis"] for r in results], dtype=float)
@@ -394,13 +412,18 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
 
             sigma2_mean = np.mean(sigmas)
             r_mean_ave = np.mean(r_mean)
-            alpha = 2 ** m / cfg.num_players
             
             alphas.append(alpha)
             normalized_vols.append(sigma2_mean / cfg.num_players)
             mean_kurtosis.append(float(np.mean(kurt)))
             return_mean.append(r_mean_ave)
-            
+
+            print(
+                f"  σ²/N={sigma2_mean / cfg.num_players:.4f}  "
+                f"kurt={float(np.mean(kurt)):.3f}",
+                flush=True,
+            )
+
             if cfg.compute_information_metrics:
                 info_mean_mi.append(float(np.mean([r["mi"] for r in results])))
                 info_mean_nmi.append(float(np.mean([r['nmi'] for r in results])))
