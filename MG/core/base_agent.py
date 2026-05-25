@@ -220,7 +220,9 @@ class StrategicAgent(BaseAgent):
         """
         # Get relevant history
         h = history[-self.memory:]
-        index = int(''.join(['1' if bit == 1 else '0' for bit in h]), 2)
+        index = 0
+        for bit in h:
+            index = (index << 1) | (1 if bit == 1 else 0)
         
         # Get virtual actions from all strategies
         virt_actions = self.strategies[:, index]
