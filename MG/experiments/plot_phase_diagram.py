@@ -158,8 +158,103 @@ def simulate_single_game(args):
 
     return output
 
-# Figure builders
+def simulate_single_game_fast(args):
+    """
+    Vectorised simulation for homogeneous populations used by the phase
+    diagram sweep.  All N agents share the same memory m, number of
+    strategies s and payoff type.
+    
+    Supports BinaryMG, ScaledMG and DollarGame payoffs.
 
+    Parameters
+    ----------
+    args : tuple (m, cfg ,game_id)
+
+    Returns
+    -------
+    dict with keys: sigma2, kurtosis, mean_returns, var_returns.
+
+    """
+    m, cfg, game_id = args
+    rng = np.random.default_rng(hash((m, game_id)) & 0x7FFFFFFF)
+    
+    N = cfg.num_players
+    s = cfg.num_strategies
+    S = 1 << m
+    rounds = cfg.rounds
+    limit = int(cfg.position_limit) if cfg.position_limit else None
+    payoff = cfg.payoff_key
+    
+    # Initialise population arrays
+    # Strategies[i, k, mu] = action of agent i, strategy k for history mu
+    strategies  = rng.choice(np.array([-1,1], dtype=np.int8),
+                            size=(N, s, S))
+    scores      = np.zeros((N,s), dtype=np.float64)
+    positions   = np.zeros(N, dtype=np.int32)
+    
+    # Random initial history
+    history_bits = rng.integers(0, 2, size=m, dtype=np.int32)
+    # pre compute for fast history to index conversion
+    powers = np.int32(1) << np.arange(m-1, -1, -1, dtype=np.int32)
+    
+    attendance = np.empty(rounds, dtype=np.int32)
+    
+    # Delayed scoring for dollar game
+    is_dollar = (payoff == "DollarGame")
+    prev_virt = np.zeros((N,s), dtype=np.int8)
+    
+    agent_idx = np.arange(N, dtype=np.int32)
+    
+    for t in range(rounds):
+        # history index, scalar for all agents
+        index = int(np.dot(history_bits, powers))
+        # virtual actions at this index (N,s)
+        virt = strategies[:, :, index]
+        
+        # select best strategy per agent and add a small uniform noise for tie breaking without branching
+        noisy = scores + rng.uniform(0.0, 1e-9, (N,s))
+        best = np.argmax(noisy, axis=1)
+        
+        # desired actions
+        desired = strategies[agent_idx, best, index]
+        
+        # position limit enforcement
+        if limit is not None:
+            feasible = np.abs(positions + desired) <= limit
+            actions = np.where(feasible, desired, 0).astype(np.int32)
+            positions += actions
+        else:
+            actions = desired.astype(np.int32)
+
+        # aggregate flow
+        A = int(actions.sum())
+        if A == 0:
+            A = int(rng.choice(np.array([-1,1])))
+        attendance[t] = A
+
+        # score update
+        if not is_dollar:
+            flow_signal = (1 if A > 0 else -1) if payoff == "BinaryMG" else A
+            scores += -virt * flow_signal
+        else:
+            if t > 0:
+                scores += prev_virt * A
+            prev_virt = virt.copy()
+        
+        # update history
+        history_bits[:-1] = history_bits[1:]
+        history_bits[-1] = 0 if A > 0 else 1
+
+    sigma2 = float(np.var(attendance))
+    kurt = float(sp_kurtosis(attendance, fisher=True, nan_policy='omit'))
+    return {
+        "sigma2": sigma2,
+        "kurtosis": kurt,
+        "mean_returns": 0.0, # phase diagram only needs attendance
+        "var_returns": 0.0
+        }
+
+# Figure builders
 def _fig_phase_diagram(alphas, normalized_vols, label):
     """σ²/N vs α, log-log scale."""
     fig, ax = plt.subplots(figsize=(8,6))
@@ -384,59 +479,82 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
     
     m_list = list(cfg.m_values)
     n_m = len(m_list)
+    total_games = n_m * cfg.num_games
     
+    # Use vectorised path when population is homogeneous.  Fall back to Game
+    # based path otherwise.
+    _fast_payoffs = {"BinaryMG", "ScaledMG", "DollarGame"}
+    use_fast = (
+        cfg.noise_players ==0
+        and cfg.payoff_key in _fast_payoffs
+        and not cfg.compute_information_metrics
+        )
+    sim_fn = simulate_single_game_fast if use_fast else simulate_single_game
+
+    if use_fast:
+        print(f"[Phase diagram] using vectorised fast path   "
+              f"({total_games} games total)", flush=True)
+    else:
+        print(f"[phase diagram] using full Game engine  "
+              f"({total_games} games total)", flush=True)
+    
+    # Build full job list
+    all_args = [
+        (m, cfg, game_id)
+        for m in m_list
+        for game_id in range(cfg.num_games)
+        ]
+
+    # Map future so results can be routed to the right bucket
+    buckets = {m: [] for m in m_list}
+    completed = 0
 
     with ProcessPoolExecutor() as executor:
-        for i_m, m in enumerate(m_list):
-            alpha = 2**m / cfg.num_players
-            print(
-                f"\n[{i_m + 1}/{n_m}]  m={m}  α={alpha:.4f}  "
-                f"({cfg.num_games} games × {cfg.rounds:,} rounds)",
-                flush=True,
-                )
-            fut_map = {
-                executor.submit(simulate_single_game, (m, cfg, game_id)): game_id
-                for game_id in range(cfg.num_games)
-                }
-            
-            results = []
-            
-            for k, fut in enumerate(as_completed(fut_map), start=1):
-                results.append(fut.result())
-                print(f"\r game {k}/{cfg.num_games}", end="", flush=True)
-            print()  
+        fut_to_m = {
+            executor.submit(sim_fn, arg): arg[0]
+            for arg in all_args
+            }
+        for fut in as_completed(fut_to_m):
+            buckets[fut_to_m[fut]].append(fut.result())
+            completed += 1
+            print(f"\r {completed}/{total_games} games done", end="", flush=True)
+    print()  
 
-            sigmas = np.array([r["sigma2"] for r in results], dtype=float)
-            kurt = np.array([r["kurtosis"] for r in results], dtype=float)
-            r_mean = np.array([r["mean_returns"] for r in results], dtype=float)
+    # Aggregate results in m_list order 
+    for m in m_list:
+        results = buckets[m]
+        alpha = 2 ** m / cfg.num_players
 
-            sigma2_mean = np.mean(sigmas)
-            r_mean_ave = np.mean(r_mean)
-            
-            alphas.append(alpha)
-            normalized_vols.append(sigma2_mean / cfg.num_players)
-            mean_kurtosis.append(float(np.mean(kurt)))
-            return_mean.append(r_mean_ave)
+        sigmas = np.array([r["sigma2"] for r in results], dtype=float)
+        kurt = np.array([r["kurtosis"] for r in results], dtype=float)
+        r_mean = np.array([r["mean_returns"] for r in results], dtype=float)
 
-            print(
-                f"  σ²/N={sigma2_mean / cfg.num_players:.4f}  "
-                f"kurt={float(np.mean(kurt)):.3f}",
-                flush=True,
-            )
+        sigma2_mean = float(np.mean(sigmas))
+        alphas.append(alpha)
+        normalized_vols.append(sigma2_mean / cfg.num_players)
+        mean_kurtosis.append(float(np.mean(kurt)))
+        return_mean.append(float(np.mean(r_mean)))
 
-            if cfg.compute_information_metrics:
-                info_mean_mi.append(float(np.mean([r["mi"] for r in results])))
-                info_mean_nmi.append(float(np.mean([r['nmi'] for r in results])))
-                info_mean_market_info.append(float(np.mean([r['market_info'] for r in results])))
-                info_mean_predictability.append(float(np.mean([r['predictability'] for r in results])))
-                info_emh_rejection_rate.append(float(np.mean([r['reject_emh_95'] for r in results])))
-                info_mean_coverage.append(float(np.mean([r['coverage'] for r in results])))
-            
-            metadata.append(
-                f"m={m}, alpha={alpha:.5f}, "
-                f"sigma^2/N={sigma2_mean / cfg.num_players:.5f}, "
-                f"m_maker={cfg.market_maker}"
-            )
+        print(
+            f"   m = {m}    α={alpha:.4f} "
+            f"  σ²/N={sigma2_mean / cfg.num_players:.4f}  "
+            f"kurt={float(np.mean(kurt)):.3f}",
+            flush=True,
+        )
+
+        if cfg.compute_information_metrics:
+            info_mean_mi.append(float(np.mean([r["mi"] for r in results])))
+            info_mean_nmi.append(float(np.mean([r['nmi'] for r in results])))
+            info_mean_market_info.append(float(np.mean([r['market_info'] for r in results])))
+            info_mean_predictability.append(float(np.mean([r['predictability'] for r in results])))
+            info_emh_rejection_rate.append(float(np.mean([r['reject_emh_95'] for r in results])))
+            info_mean_coverage.append(float(np.mean([r['coverage'] for r in results])))
+        
+        metadata.append(
+            f"m={m}, alpha={alpha:.5f}, "
+            f"sigma^2/N={sigma2_mean / cfg.num_players:.5f}, "
+            f"m_maker={cfg.market_maker}"
+        )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = os.path.join(cfg.output_dir, f"{cfg.run_name}_{timestamp}")
