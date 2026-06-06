@@ -188,6 +188,9 @@ class StrategicAgent(BaseAgent):
         self.score_lambda = score_lambda
         self.active_from = active_from
 
+        # Cache payoff mode once
+        self._payoff_mode: str = getattr(payoff, "mode", "immediate")
+
         # Initialize strategy bank
         self.strategies = self.rng.choice(
             [-1, 1], 
@@ -200,9 +203,16 @@ class StrategicAgent(BaseAgent):
         self.strategy_switches = 0
         self.wins = 0
 
-        # Settlement buffers for delayed payoff
-        self._pending: Optional[Dict[str, Any]] = None
-        self._prev: Optional[Dict[str, Any]] = None
+        # Settlement buffers stored as flat attributes rather than dicts
+        # to avoid per-round dict allocation in the hot path.
+        self._pend_idx:    Optional[int]        = None
+        self._pend_virt:   Optional[np.ndarray] = None
+        self._pend_action: Optional[int]        = None
+        self._pend_chosen: Optional[int]        = None
+        self._prev_idx:    Optional[int]        = None
+        self._prev_virt:   Optional[np.ndarray] = None
+        self._prev_action: Optional[int]        = None
+        self._prev_chosen: Optional[int]        = None
 
     def choose_action(self, history: List[int], current_round:int) -> int:
         """
@@ -227,9 +237,10 @@ class StrategicAgent(BaseAgent):
         # Get virtual actions from all strategies
         virt_actions = self.strategies[:, index]
         
-        # Select best strategy (random tie-breaking)
-        best_indices = np.flatnonzero(self.scores == self.scores.max())
-        chosen_idx = self.rng.choice(best_indices)
+        # Best strategy: add tiny noise for tie breaking without branching
+        chosen_idx = int(np.argmax(
+            self.scores + self.rng.uniform(0.0, 1e-9, self.num_strategies)
+            ))
         
         # Track strategy selection
         if self.strategy is not None and chosen_idx != self.strategy:
@@ -242,16 +253,16 @@ class StrategicAgent(BaseAgent):
         # Enforce position limit
         action = self._enforce_action(desired_action, current_round)
         
-        
-        
         # Store for settlement
-        self._prev = self._pending
-        self._pending = {
-            "idx": index,
-            "virt_actions": virt_actions,
-            "chosen_action": action,
-            "chosen_idx": chosen_idx
-        }
+        self._prev_idx = self._pend_idx
+        self._prev_virt = self._pend_virt
+        self._prev_action = self._pend_action
+        self._prev_chosen = self._pend_chosen
+    
+        self._pend_idx = index
+        self._pend_virt = virt_actions
+        self._pend_action = action
+        self._pend_chosen = chosen_idx
         
         return action
     
@@ -275,28 +286,25 @@ class StrategicAgent(BaseAgent):
             Market impact parameter
         """
         # Execute trade from current round
-        action = self._pending["chosen_action"]
+        action = self._pend_action
         self._apply_trade(action, price)
         
         # Determine which round to settle (immediate vs delayed payoff)
-        mode = getattr(self.payoff, "mode", "immediate")
-        buf = self._pending if mode == "immediate" else self._prev
+        buf_action = self._pend_action if self._payoff_mode == "immediate" else self._prev_action
+        buf_virt = self._pend_virt if self._payoff_mode == "immediate" else self._prev_virt
         
-        if buf is None:
+        if buf_action is None:
             # Nothing to settle (e.g., first round with delayed payoff)
             return
         
         # Get rewards
-        a_used = buf["chosen_action"]
-        virt = buf["virt_actions"]
-        
-        reward = self.payoff.get_reward(a_used, flow, N, lambda_value)
+        reward = self.payoff.get_reward(buf_action, flow, N, lambda_value)
         self.points += reward
         
-        virt_rewards = self.payoff.get_reward_vector(virt, flow, N, lambda_value)
+        virt_rewards = self.payoff.get_reward_vector(buf_virt, flow, N, lambda_value)
         self.scores = (1 - self.score_lambda) * self.scores + virt_rewards
         
-        self.wins = self.payoff.get_win(a_used, flow)
+        self.wins = self.payoff.get_win(buf_action, flow)
 
 
 # Type alias for convenience
