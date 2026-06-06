@@ -33,7 +33,6 @@ class TestStatsRecorderInitialization:
         assert recorder.position.shape == (101, 10)
         assert recorder.wins_per_round.shape == (101, 10)
         assert recorder.points_per_round.shape == (101, 10)
-        assert recorder.cash_per_round.shape == (101, 10)
         assert recorder.best_strategy.shape == (101, 10)
         
         assert recorder.prices.shape == (101,)
@@ -258,7 +257,7 @@ class TestStatsRecorderFinalize:
     
         for t in range(5):
             for p in players:
-                p.choose_action(history)
+                p.choose_action(history, current_round=1)
             recorder.record_round(t, price=100.0, A=0, players=players)
         
         results = recorder.finalize(players)
@@ -287,7 +286,7 @@ class TestStatsRecorderStrategywitches:
         history = [-1, 1, -1]
         
         for p in players:
-            p.choose_action(history)
+            p.choose_action(history, current_round=1)
         
         recorder = StatsRecorder(N=3, rounds=5, k_max=3, record_agent_series=True)
         recorder.record_initial_state(price=100.0, players=players)
@@ -357,7 +356,7 @@ class TestStatsRecorderEdgeCases:
         history = [-1, 1, -1]
         
         for p in players:
-            p.choose_action(history)
+            p.choose_action(history, current_round=1)
         
         recorder = StatsRecorder(N=1, rounds=5, k_max=2, record_agent_series=True)
         recorder.record_initial_state(price=100.0, players=players)
