@@ -58,7 +58,7 @@ class ChallletFig2Config:
     # Game
     rounds:          int       = 10_000
     num_runs:        int       = 200
-    grand_canonical: bool      = False    # canonical version for this figure
+    grand_canonical: bool      = True    # canonical version for this figure
     gc_threshold:    float     = 0.0
 
     # Output

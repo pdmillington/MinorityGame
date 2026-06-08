@@ -109,9 +109,10 @@ def simulate_single_game(args):
     cfg_game = GameConfig(
         rounds=cfg.rounds,
         lambda_=1/(cfg.num_players * 50),
-        mm=None,
+        mm=cfg.market_maker,
         price=100,
         record_agent_series=False,
+        record_strategies=False,
         seed=hash((m, game_id)) & 0x7FFFFFFF
         )
 
@@ -157,102 +158,6 @@ def simulate_single_game(args):
         output['coverage'] = n_sufficient / (2 ** m)
 
     return output
-
-def simulate_single_game_fast(args):
-    """
-    Vectorised simulation for homogeneous populations used by the phase
-    diagram sweep.  All N agents share the same memory m, number of
-    strategies s and payoff type.
-    
-    Supports BinaryMG, ScaledMG and DollarGame payoffs.
-
-    Parameters
-    ----------
-    args : tuple (m, cfg ,game_id)
-
-    Returns
-    -------
-    dict with keys: sigma2, kurtosis, mean_returns, var_returns.
-
-    """
-    m, cfg, game_id = args
-    rng = np.random.default_rng(hash((m, game_id)) & 0x7FFFFFFF)
-    
-    N = cfg.num_players
-    s = cfg.num_strategies
-    S = 1 << m
-    rounds = cfg.rounds
-    limit = int(cfg.position_limit) if cfg.position_limit else None
-    payoff = cfg.payoff_key
-    
-    # Initialise population arrays
-    # Strategies[i, k, mu] = action of agent i, strategy k for history mu
-    strategies  = rng.choice(np.array([-1,1], dtype=np.int8),
-                            size=(N, s, S))
-    scores      = np.zeros((N,s), dtype=np.float64)
-    positions   = np.zeros(N, dtype=np.int32)
-    
-    # Random initial history
-    history_bits = rng.integers(0, 2, size=m, dtype=np.int32)
-    # pre compute for fast history to index conversion
-    powers = np.int32(1) << np.arange(m-1, -1, -1, dtype=np.int32)
-    
-    attendance = np.empty(rounds, dtype=np.int32)
-    
-    # Delayed scoring for dollar game
-    is_dollar = (payoff == "DollarGame")
-    prev_virt = np.zeros((N,s), dtype=np.int8)
-    
-    agent_idx = np.arange(N, dtype=np.int32)
-    
-    for t in range(rounds):
-        # history index, scalar for all agents
-        index = int(np.dot(history_bits, powers))
-        # virtual actions at this index (N,s)
-        virt = strategies[:, :, index]
-        
-        # select best strategy per agent and add a small uniform noise for tie breaking without branching
-        noisy = scores + rng.uniform(0.0, 1e-9, (N,s))
-        best = np.argmax(noisy, axis=1)
-        
-        # desired actions
-        desired = strategies[agent_idx, best, index]
-        
-        # position limit enforcement
-        if limit is not None:
-            feasible = np.abs(positions + desired) <= limit
-            actions = np.where(feasible, desired, 0).astype(np.int32)
-            positions += actions
-        else:
-            actions = desired.astype(np.int32)
-
-        # aggregate flow
-        A = int(actions.sum())
-        if A == 0:
-            A = int(rng.choice(np.array([-1,1])))
-        attendance[t] = A
-
-        # score update
-        if not is_dollar:
-            flow_signal = (1 if A > 0 else -1) if payoff == "BinaryMG" else A
-            scores += -virt * flow_signal
-        else:
-            if t > 0:
-                scores += prev_virt * A
-            prev_virt = virt.copy()
-        
-        # update history
-        history_bits[:-1] = history_bits[1:]
-        history_bits[-1] = 0 if A > 0 else 1
-
-    sigma2 = float(np.var(attendance))
-    kurt = float(sp_kurtosis(attendance, fisher=True, nan_policy='omit'))
-    return {
-        "sigma2": sigma2,
-        "kurtosis": kurt,
-        "mean_returns": 0.0, # phase diagram only needs attendance
-        "var_returns": 0.0
-        }
 
 # Figure builders
 def _fig_phase_diagram(alphas, normalized_vols, label):
@@ -481,22 +386,7 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
     n_m = len(m_list)
     total_games = n_m * cfg.num_games
     
-    # Use vectorised path when population is homogeneous.  Fall back to Game
-    # based path otherwise.
-    _fast_payoffs = {"BinaryMG", "ScaledMG", "DollarGame"}
-    use_fast = (
-        cfg.noise_players ==0
-        and cfg.payoff_key in _fast_payoffs
-        and not cfg.compute_information_metrics
-        )
-    sim_fn = simulate_single_game_fast if use_fast else simulate_single_game
-
-    if use_fast:
-        print(f"[Phase diagram] using vectorised fast path   "
-              f"({total_games} games total)", flush=True)
-    else:
-        print(f"[phase diagram] using full Game engine  "
-              f"({total_games} games total)", flush=True)
+    print(f"[phase diagram] {total_games} games total", flush=True)
     
     # Build full job list
     all_args = [
@@ -511,7 +401,7 @@ def run_phase_diagram(cfg: PhaseDiagramConfig):
 
     with ProcessPoolExecutor() as executor:
         fut_to_m = {
-            executor.submit(sim_fn, arg): arg[0]
+            executor.submit(simulate_single_game, arg): arg[0]
             for arg in all_args
             }
         for fut in as_completed(fut_to_m):
