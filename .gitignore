@@ -5,13 +5,8 @@ simulation_runs/
 results/
 logs/
 
-# ── MG package outputs ─────────────────────────────────────────────────────────
-MG/config/phase_diagrams/
-MG/config/evolutionary/
-MG/config/behavioural_characterization/
-MG/config/population_evolution/
-MG/config/population_families/
-MG/config/success_analysis/
+# ── MG config (scratch only — tracked configs live directly in config/) ────────
+MG/config/scratch/
 
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
