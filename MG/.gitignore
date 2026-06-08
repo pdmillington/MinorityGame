@@ -1,2 +1,3 @@
+# Covered by root .gitignore — kept for clarity
 plots/
-simulation_runs
+simulation_runs/

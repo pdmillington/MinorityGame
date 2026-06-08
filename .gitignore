@@ -1,36 +1,31 @@
+# ── Generated outputs (plots, notebooks, simulation data) ─────────────────────
+outputs/
 plots/
 simulation_runs/
+results/
 logs/
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyc
-*.pyo
-*.egg-info/
-.pytest_cache/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-results/
+# ── MG package outputs ─────────────────────────────────────────────────────────
 MG/config/phase_diagrams/
 MG/config/evolutionary/
 MG/config/behavioural_characterization/
 MG/config/population_evolution/
-*.png
-minoritygame.ipynb
-MG/config/phase_diagrams/
-MG/config/population_families
+MG/config/population_families/
 MG/config/success_analysis/
-strategy_space_analysis.pdf
-.ipynb_checkpoints
-MG/plotting.ipynb
-MG/plotting.ipynb
-MG/testing.ipynb
-ParallelMG-vectorised.ipynb
-ParallelMG.ipynb
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── IDE / OS ───────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
