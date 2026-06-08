@@ -80,7 +80,7 @@ class SmallMinorityPayoff(MGPayoff):
         minority = -1 if total_action > 0 else 1
         return a_i == minority
 
-class AssymetricMinorityPayoff(MGPayoff):
+class AsymmetricMinorityPayoff(MGPayoff):
     """
     Same as SmallMinority, but only allows a positive reward
     """

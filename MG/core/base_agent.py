@@ -167,7 +167,8 @@ class StrategicAgent(BaseAgent):
                  active_from: int = 0,
                  rng: Optional[np.random.Generator] = None,
                  seed: Optional[int] = None,
-                 score_lambda: float = 0.0):
+                 score_lambda: float = 0.0,
+                 always_trade: bool = False,):
         """
         Initialize strategic agent.
         
@@ -187,6 +188,7 @@ class StrategicAgent(BaseAgent):
         self.payoff = payoff
         self.score_lambda = score_lambda
         self.active_from = active_from
+        self.always_trade = always_trade
 
         # Cache payoff mode once
         self._payoff_mode: str = getattr(payoff, "mode", "immediate")
@@ -304,7 +306,7 @@ class StrategicAgent(BaseAgent):
         virt_rewards = self.payoff.get_reward_vector(buf_virt, flow, N, lambda_value)
         self.scores = (1 - self.score_lambda) * self.scores + virt_rewards
         
-        self.wins = self.payoff.get_win(buf_action, flow)
+        self.wins += int(self.payoff.get_win(buf_action, flow))
 
 
 # Type alias for convenience

@@ -198,6 +198,11 @@ class Game:
              for p in self.players],
             dtype=np.int32,
         )
+        self._fa_always_trade = np.array(
+            [p.always_trade if hasattr(p, "always_trade") else False
+             for p in self.players],
+            dtype=bool,
+        )
         
         # Payiff codes from PAYOFF_REGISTRY class names
         pcodes = np.full(N, -1, dtype=np.int32)
@@ -513,6 +518,12 @@ class Game:
 
         # Position limits
         chosen = self._enforce_position_limits(chosen)
+        
+        # Agents sit out if score below threshold
+        if self.cfg.grand_canonical:
+            best_scores = self._fa_scores[np.arange(self.n), best_idx]
+            frozen = (best_scores < self.cfg.gc_threshold) & ~self._fa_always_trade
+            chosen[frozen] = 0
         
         # Aggregate flow
         self.A = int(chosen.sum())

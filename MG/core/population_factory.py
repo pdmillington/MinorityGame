@@ -9,6 +9,7 @@ Created on Tue Nov 11 13:22:58 2025
 from dataclasses import dataclass
 import itertools as it
 import numpy as np
+from payoffs.mg import PAYOFF_REGISTRY
 
 @dataclass(frozen=True)
 class Cohort:
@@ -19,6 +20,7 @@ class Cohort:
     position_limit: int = 0
     agent_type: str = "strategic"
     allow_no_action: bool = False
+    always_trade: bool = False
 
 class PopulationFactory:
     def __init__(self, spec, rng=None):
@@ -38,10 +40,8 @@ class PopulationFactory:
                 raise ValueError(f"Strategic cohort missing strategies: {c}")
 
 
-        payoff_map = {"BinaryMG":0,
-                      "ScaledMG":1,
-                      "SmallMinority":2,
-                      "DollarGame": 3}
+        # Derived from PAYOFF_REGISTRY — single source of truth shared with game.py
+        payoff_map = {name: i for i, name in enumerate(PAYOFF_REGISTRY.keys())}
         memory      = np.empty(total, dtype=np.int32)
         strategies  = np.empty(total, dtype=np.int16)
         payoff_code = np.empty(total, dtype=np.int8)
@@ -107,6 +107,7 @@ class PopulationFactory:
             position_limit=p.get("position_limit", 0),
             agent_type=p.get("agent_type", "strategic"),
             allow_no_action=p.get("allow_no_action", False),
+            always_trade=p.get("always_trade", False),
             )
             for p in parts if isinstance(p["count"], int)]
         if props:
@@ -123,7 +124,9 @@ class PopulationFactory:
                 strategies=p.get("strategies"),
                 position_limit=p.get("position_limit", 0),
                 agent_type=p.get("agent_type", "strategic"),
-                allow_no_action=p.get("allow_no_action", False))
+                allow_no_action=p.get("allow_no_action", False),
+                always_trade=p.get("always_trade", False),
+                )
                     for p, c in zip(props, base) if c>0]
         return out
 

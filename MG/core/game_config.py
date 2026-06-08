@@ -38,4 +38,5 @@ class GameConfig:
     panel_size: int = 200
     record_agent_series: bool = True
     record_strategies: bool = False
-
+    grand_canonical:   bool  = False    # if True, agents only trade when best score >= gc_threshold
+    gc_threshold:      float = 0.0      # threshold for grand canonical trading

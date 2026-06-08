@@ -31,6 +31,7 @@ class CohortConfig:
     agent_type: str = "strategic"
     allow_no_action: bool = False
     score_lambda: float = 0.0
+    always_trade: bool = False
 
 @dataclass
 class PopulationConfig:
@@ -209,6 +210,7 @@ def build_population_spec(pop_cfg: PopulationConfig) -> dict:
                     "position_limit": c.position_limit,
                     "agent_type": c.agent_type,
                     "score_lambda": c.score_lambda,
+                    "always_trade": c.always_trade,
                     })
             if c.agent_type == "noise":
                 cohorts.append({
