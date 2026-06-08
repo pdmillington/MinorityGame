@@ -19,6 +19,13 @@ __pycache__/
 .ipynb_checkpoints/
 *.ipynb
 
+# ── Generated figures ──────────────────────────────────────────────────────────
+*.pdf
+*.png
+
+# ── Project notes (confidential) ───────────────────────────────────────────────
+CLAUDE.md
+
 # ── IDE / OS ───────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
