@@ -13,9 +13,10 @@ Figure 2: Gain of producers and speculators vs number of producers
           Producer count swept from 0 to 10P = 2560
           Average over 200 realisations.
 
-Note: This is the canonical MG (all agents trade every round),
-      not the grand canonical version. c=0 in the paper refers
-      to the capital parameter (no bankruptcy), not grand canonical.
+Note: grand_canonical=True is the correct default for this figure.
+      Speculators sit out when their best strategy score drops below
+      gc_threshold=0.0.  Producers (always_trade=True) always participate.
+      c=0 in the paper refers to the capital parameter (no bankruptcy).
 
 Usage
 -----
@@ -27,7 +28,7 @@ import argparse
 import json
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -39,7 +40,7 @@ from utils.logger import RunLogger
 # ── Config ────────────────────────────────────────────────────────────────────
 
 @dataclass
-class ChallletFig2Config:
+class ChalletFig2Config:
     # Population — matching paper exactly
     n_speculators:   int       = 641
     m:               int       = 8        # P = 2^m = 256
@@ -58,19 +59,27 @@ class ChallletFig2Config:
     # Game
     rounds:          int       = 10_000
     num_runs:        int       = 200
-    grand_canonical: bool      = True    # canonical version for this figure
+    grand_canonical: bool      = True     # speculators sit out when best score < gc_threshold
     gc_threshold:    float     = 0.0
+
+    # Active speculator tracking.
+    # Canonical (grand_canonical=False): all speculators trade every round,
+    # so mean_active = n_speculators trivially — no series needed.
+    # Grand canonical (grand_canonical=True): speculators can freeze out,
+    # so we must record the position series to count who traded each round.
+    # At N=3201, rounds=10000 that is ~256 MB per worker; consider max_workers.
+    max_workers: Optional[int] = None   # None = os.cpu_count()+4
 
     # Output
     output_dir:      str       = "results/challet_fig2"
     run_name:        str       = "challet_fig2"
 
 
-def load_config(path: str) -> ChallletFig2Config:
+def load_config(path: str) -> ChalletFig2Config:
     with open(path) as f:
         data = {k: v for k, v in json.load(f).items()
                 if not k.startswith("_")}
-    return ChallletFig2Config(**data)
+    return ChalletFig2Config(**data)
 
 
 # ── Population spec builder ───────────────────────────────────────────────────
@@ -126,7 +135,7 @@ def _run_one(args: tuple) -> dict:
         mm=None,
         price=100,
         seed=hash((n_producers, run_idx)) & 0x7FFFFFFF,
-        record_agent_series=True,
+        record_agent_series=False,   # active_count from game.py is sufficient
         grand_canonical=grand_canonical,
         gc_threshold=gc_threshold,
     )
@@ -144,11 +153,12 @@ def _run_one(args: tuple) -> dict:
     gain_prod = (float(np.mean(final_points[prod_mask])) / rounds
                  if prod_mask.any() else np.nan)
 
-    # Active speculators per round from position series
-    position = results.get("position")
-    if position is not None:
-        delta       = np.abs(np.diff(position[:, spec_mask], axis=0))
-        mean_active = float(np.mean((delta > 0).sum(axis=1)))
+    # Mean active speculators per round.
+    # active_count[i] = total rounds agent i actually traded (after GC freeze,
+    # position limits etc.).  Sum over speculators and divide by rounds.
+    active_count = results.get("active_count")
+    if active_count is not None:
+        mean_active = float(active_count[spec_mask].sum()) / rounds
     else:
         mean_active = np.nan
 
@@ -163,7 +173,7 @@ def _run_one(args: tuple) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_challet_fig2(cfg: ChallletFig2Config) -> None:
+def run_challet_fig2(cfg: ChalletFig2Config) -> None:
 
     P     = 2 ** cfg.m     # = 256 for m=8
     alpha = P / cfg.n_speculators
@@ -181,6 +191,9 @@ def run_challet_fig2(cfg: ChallletFig2Config) -> None:
     print(f"Total games: {total}  "
           f"({len(cfg.producer_counts)} producer counts "
           f"× {cfg.num_runs} runs)")
+    if cfg.grand_canonical:
+        print("Grand canonical mode: position series will be recorded "
+              "(~256 MB/worker); consider reducing max_workers if RAM is tight)")
 
     tasks = [
         (n_prod, run_idx,
@@ -194,7 +207,7 @@ def run_challet_fig2(cfg: ChallletFig2Config) -> None:
     rows = []
     done = 0
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=cfg.max_workers) as executor:
         futures = {executor.submit(_run_one, t): t for t in tasks}
         for future in as_completed(futures):
             rows.append(future.result())
@@ -229,10 +242,12 @@ def run_challet_fig2(cfg: ChallletFig2Config) -> None:
     logger.log_table(summary, "summary")
 
     # ── Figures ───────────────────────────────────────────────────────────────
-    fig2  = _plot_gain(summary, cfg, P, alpha)
-    figAC = _plot_active(summary, cfg, P, alpha)
+    figures = [(_plot_gain(summary, cfg, P, alpha), "fig2_gain")]
 
-    for fig, name in [(fig2, "fig2_gain"), (figAC, "active_speculators")]:
+    if summary["mean_active_spec"].notna().any():
+        figures.append((_plot_active(summary, cfg, P, alpha), "active_speculators"))
+
+    for fig, name in figures:
         path = logger.get_dir() + f"/{name}.pdf"
         fig.savefig(path)
         plt.close(fig)
@@ -243,7 +258,7 @@ def run_challet_fig2(cfg: ChallletFig2Config) -> None:
 
 
 def _plot_gain(summary: pd.DataFrame,
-               cfg: ChallletFig2Config,
+               cfg: ChalletFig2Config,
                P: int, alpha: float) -> plt.Figure:
     """
     Gain of producers and speculators vs number of producers in P units.
@@ -286,7 +301,7 @@ def _plot_gain(summary: pd.DataFrame,
 
 
 def _plot_active(summary: pd.DataFrame,
-                 cfg: ChallletFig2Config,
+                 cfg: ChalletFig2Config,
                  P: int, alpha: float) -> plt.Figure:
     """Mean active speculators per round vs producer count."""
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -325,7 +340,7 @@ def main():
         help="Path to JSON config. If omitted, defaults are used.",
     )
     args = parser.parse_args()
-    cfg  = load_config(args.config) if args.config else ChallletFig2Config()
+    cfg  = load_config(args.config) if args.config else ChalletFig2Config()
     run_challet_fig2(cfg)
 
 

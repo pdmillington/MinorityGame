@@ -105,7 +105,7 @@ def _run_single_strat_game(args: tuple) -> dict:
     position_limit  int
     """
     (m, proportion, run_idx, n_total, n_strats,
-     payoff, rounds, seed_base, position_limit) = args
+     payoff, rounds, seed_base, position_limit, grand_canonical) = args
 
     # Import here so the worker process gets its own fresh import
     from core.game import Game
@@ -124,6 +124,7 @@ def _run_single_strat_game(args: tuple) -> dict:
         price=100,
         seed=seed,
         record_agent_series=True,   # needed for correct final_wins
+        grand_canonical=grand_canonical,
     )
 
     game    = Game(population_spec=population_spec, cfg=cfg_game)
@@ -167,6 +168,7 @@ def run_full_sweep(
     seed_base:      int           = 42,
     max_workers:    Optional[int] = None,
     position_limit: int           = 0,
+    grand_canonical: bool         = True,
 ) -> dict:
     """
     Sweep both m values and single-strategy proportions in parallel.
@@ -201,7 +203,7 @@ def run_full_sweep(
     """
     tasks = [
         (m, proportion, run_idx, n_total, n_strats,
-         payoff, rounds, seed_base, position_limit)
+         payoff, rounds, seed_base, position_limit, grand_canonical)
         for m in m_values
         for proportion in proportions
         for run_idx in range(n_runs)
@@ -293,4 +295,81 @@ def run_proportion_sweep(
         "success":    full["success"][m],
         "attendance": full["attendance"][m],
         "label_map":  full["label_map"][m],
+    }
+
+def run_phase_sweep(
+    n_adaptive_values: List[int],
+    proportions:       List[float],
+    m:                 int           = 3,
+    n_strats:          int           = 2,
+    payoff:            str           = "ScaledMG",
+    rounds:            int           = 50_000,
+    n_runs:            int           = 50,
+    seed_base:         int           = 42,
+    max_workers:       Optional[int] = None,
+    position_limit:    int           = 0,
+    grand_canonical:   bool          = True,
+) -> dict:
+    """
+    Phase diagram sweep: fix m, vary N_adaptive to move through alpha = 2^m / N.
+
+    Parameters
+    ----------
+    n_adaptive_values : list of adaptive agent counts to sweep
+    proportions       : list of single-strategy proportions (including 0.0 as baseline)
+    m                 : fixed memory length
+    
+    Returns
+    -------
+    dict with keys:
+        "success"     : N -> proportion -> label -> list[float]
+        "alpha"       : N -> float   (2^m / N)
+        "label_map"   : N -> proportion -> dict[int, str]
+    """
+    tasks = [
+        (m, proportion, run_idx, n_adaptive, n_strats,
+         payoff, rounds, seed_base, position_limit, grand_canonical)
+        for n_adaptive in n_adaptive_values
+        for proportion in proportions
+        for run_idx in range(n_runs)
+    ]
+
+    success_store:  Dict = {
+        n: {p: {} for p in proportions} for n in n_adaptive_values
+    }
+    label_map_store: Dict = {n: {} for n in n_adaptive_values}
+
+    total = len(tasks)
+    done  = 0
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_run_single_strat_game, t): t for t in tasks}
+        for future in as_completed(futures):
+            res  = future.result()
+            prop = res["proportion"]
+            ridx = res["run_idx"]
+            # Recover N_adaptive from the task args
+            n_adaptive = futures[future][3]
+
+            if prop not in label_map_store[n_adaptive]:
+                label_map_store[n_adaptive][prop] = res["label_map"]
+
+            for cid, mean_sr in res["success"].items():
+                label = res["label_map"].get(cid, f"cohort_{cid}")
+                success_store[n_adaptive][prop].setdefault(label, [])
+                success_store[n_adaptive][prop][label].append(mean_sr)
+
+            done += 1
+            print(
+                f"  [{done}/{total}]  N={n_adaptive}  proportion={prop:.0%}"
+                f"  run={ridx}",
+                end="\r",
+            )
+
+    print(f"\nPhase sweep complete. {total} games run.")
+
+    return {
+        "success":   success_store,
+        "alpha":     {n: (2 ** m) / n for n in n_adaptive_values},
+        "label_map": label_map_store,
     }

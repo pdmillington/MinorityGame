@@ -229,12 +229,13 @@ class Game:
         self._fa_scores = scores
  
         # State arrays
-        self._fa_position    = np.zeros(N, dtype=np.int32)
-        self._fa_wins        = np.zeros(N, dtype=np.int32)
-        self._fa_points      = np.zeros(N, dtype=np.float64)
-        self._fa_best_strat  = np.full(N, -1, dtype=np.int16)
-        self._fa_prev_action = np.zeros(N, dtype=np.int8)
-        self._fa_prev_A      = 0
+        self._fa_position      = np.zeros(N, dtype=np.int32)
+        self._fa_wins          = np.zeros(N, dtype=np.int32)
+        self._fa_points        = np.zeros(N, dtype=np.float64)
+        self._fa_best_strat    = np.full(N, -1, dtype=np.int16)
+        self._fa_prev_action   = np.zeros(N, dtype=np.int8)
+        self._fa_prev_A        = 0
+        self._fa_active_count  = np.zeros(N, dtype=np.int32)  # rounds agent actually traded
  
         self._S_max = S_max
         self._M_max = M_max
@@ -461,8 +462,9 @@ class Game:
             p.wealth = p.cash
             p.points = 0
             p.wins = 0
-        
+
         self._build_fast_arrays()
+        self._fa_active_count[:] = 0
             
     def _apply_activation_schedule(self, schedule: Dict[int, List[int]]) -> None:
         """
@@ -525,6 +527,9 @@ class Game:
             frozen = (best_scores < self.cfg.gc_threshold) & ~self._fa_always_trade
             chosen[frozen] = 0
         
+        # Track how many rounds each agent actually traded
+        self._fa_active_count += (chosen != 0).view(np.uint8)
+
         # Aggregate flow
         self.A = int(chosen.sum())
         if self.A == 0:
@@ -606,9 +611,10 @@ class Game:
             )
 
         # Add metadata
-        results["cohort_ids"] = np.array(self.cohort_id, dtype=int)
-        results["cohorts"] = self.meta["cohorts"]
-        results["config"] = self.cfg
+        results["cohort_ids"]   = np.array(self.cohort_id, dtype=int)
+        results["cohorts"]      = self.meta["cohorts"]
+        results["config"]       = self.cfg
+        results["active_count"] = self._fa_active_count.copy()  # (N,) rounds each agent traded
 
         self.results = results
         return results

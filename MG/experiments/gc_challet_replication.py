@@ -62,6 +62,7 @@ class GCChallletConfig:
     # Game
     rounds:           int         = 10_000
     num_runs:         int         = 100      # 500 for publication quality
+    grand_canonical:  bool        = True
     gc_threshold:     float       = 0.0
 
     # Output
@@ -127,10 +128,9 @@ def _run_one(args: tuple) -> dict:
         active_speculators  float   mean number of active speculators per round
     """
     (n_producers, run_idx, n_speculators, m, s,
-     payoff_key, rounds, gc_threshold) = args
+     payoff_key, rounds, grand_canonical, gc_threshold) = args
 
     from core.game import Game
-    from core.game_config import GameConfig
 
     spec = _make_spec(n_speculators, n_producers, m, s, payoff_key)
 
@@ -140,8 +140,8 @@ def _run_one(args: tuple) -> dict:
         mm=None,
         price=100,
         seed=hash((n_producers, run_idx)) & 0x7FFFFFFF,
-        record_agent_series=True,
-        grand_canonical=True,
+        record_agent_series=False,
+        grand_canonical=grand_canonical,
         gc_threshold=gc_threshold,
     )
 
@@ -160,15 +160,8 @@ def _run_one(args: tuple) -> dict:
                 if prod_mask.any() else np.nan
 
     # Active speculators per round
-    # position series shape (rounds+1, N) — active if position changed
-    # More precisely: active if |chosen| > 0, i.e. position[t] != position[t-1]
-    position = results["position"]              # (rounds+1, N)
-    if position is not None:
-        delta      = np.abs(np.diff(position[:, spec_mask], axis=0))  # (rounds, N_spec)
-        active_per_round = (delta > 0).sum(axis=1)                    # (rounds,)
-        mean_active = float(np.mean(active_per_round))
-    else:
-        mean_active = np.nan
+    active_count = results["active_count"]          # (N,) total active rounds per agent
+    mean_active  = float(active_count[spec_mask].sum()) / rounds
 
     return {
         "n_producers":        n_producers,
@@ -198,7 +191,7 @@ def run_gc_challet(cfg: GCChallletConfig) -> None:
     tasks = [
         (n_prod, run_idx,
          cfg.n_speculators, cfg.m, cfg.s,
-         cfg.payoff_key, cfg.rounds, cfg.gc_threshold)
+         cfg.payoff_key, cfg.rounds, cfg.grand_canonical, cfg.gc_threshold)
         for n_prod in cfg.producer_counts
         for run_idx in range(cfg.num_runs)
     ]
@@ -218,7 +211,7 @@ def run_gc_challet(cfg: GCChallletConfig) -> None:
                 end="\r",
             )
 
-    print(f"\nAll games complete.")
+    print("\nAll games complete.")
 
     df = pd.DataFrame(rows)
     logger.log_table(df, "results")

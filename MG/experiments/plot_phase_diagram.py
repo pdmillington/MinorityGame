@@ -43,6 +43,7 @@ class PhaseDiagramConfig:
     compute_information_metrics: bool = False   #opt in for information metrics calculation
     # Info lag relative to m applied to the window for which information metrics are applied
     info_lag: int = 0
+    grand_canonical: bool  = False
 
 def load_config(path: str) -> PhaseDiagramConfig:
     with open(path, "r") as f:
@@ -113,6 +114,7 @@ def simulate_single_game(args):
         price=100,
         record_agent_series=False,
         record_strategies=False,
+        grand_canonical=cfg.grand_canonical,
         seed=hash((m, game_id)) & 0x7FFFFFFF
         )
 
@@ -124,16 +126,23 @@ def simulate_single_game(args):
 
     attendance = results["Attendance"]
     prices = results["Prices"]
+    active_fraction = results['active_count'].sum() / (cfg.num_players * cfg.rounds)
 
     prices_safe = np.where(prices <= 0, np.nan, prices)
     log_prices = np.log(prices_safe)
     returns = np.diff(log_prices)           # length rounds
+    returns_clean = returns[~np.isnan(returns)]
 
     output = {
+        "returns": returns_clean.tolist() if game_id==0 else [],
         "sigma2": np.nanvar(attendance),
         "kurtosis": float(sp_kurtosis(attendance, fisher=True, nan_policy="omit")),
         "mean_returns": np.nanmean(returns),
         "var_returns": np.nanvar(returns),
+        "active_fraction": float(active_fraction),
+        "ac1_returns": float(np.corrcoef(returns_clean[:-1], returns_clean[1:])[0,1]),
+        "ac1_sq_returns": float(np.corrcoef(returns_clean[:-1]**2, returns_clean[1:]**2)[0,1]),
+        "kurt_returns": float(sp_kurtosis(returns_clean, fisher=True)),
         }
 
     if cfg.compute_information_metrics:
